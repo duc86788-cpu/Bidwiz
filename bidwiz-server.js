@@ -100,26 +100,42 @@ function advanceRoom(room) {
 // ---------- what one seat may see ----------
 function viewFor(room, seat) {
   const E = room.E, G = E.Gref();
+  if (!G) { // room created, game not started yet → safe lobby view
+    return {
+      code: room.code, mode: room.mode, phase: 'lobby', handNum: 0,
+      trump: null, dealer: 0, names: room.seats.map(s => s ? s.name : '—'),
+      robots: room.seats.map(s => !s || s.robot),
+      connected: room.seats.map(s => !!s),
+      scores: room.seats.map(() => 0), target: E.TARGET[room.mode] || 500,
+      yourSeat: seat, yourHand: [], legal: [], turn: -1,
+      trick: [], trickNum: 0, lastWin: null, tricksWon: {}, bids: [],
+      bidOptions: null, pushEligible: false, formeEligible: false,
+      blindQueue: [], blind: null, eligible: [], pendingChoice: null,
+      handCounts: [0,0,0,0], summaryRows: null, summaryThrown: false,
+      winner: null, log: [], host: seat === 0,
+    };
+  }
+  const hands = G.hands || [];                 // lobby state: game not dealt yet
   const myTurnPlay = G.phase==='play' && G.turn===seat;
   const myBid = G.phase==='bidding' && E.bidderSeat()===seat;
   return {
-    code: room.code, mode: G.mode, phase: G.phase, handNum: G.handNum,
+    code: room.code, mode: room.mode, phase: G.phase, handNum: G.handNum || 0,
     trump: G.trump, dealer: G.dealerIdx, names: G.names,
     robots: room.seats.map(s => !s || s.robot),
     connected: room.seats.map(s => !!s),
-    scores: G.scores, target: E.TARGET[G.mode],
+    scores: G.scores || room.seats.map(()=>0), target: E.TARGET[G.mode] || 500,
     yourSeat: seat,
-    yourHand: G.hands[seat] ? E.sortHand(G.hands[seat].slice(), G.trump) : [],
+    yourHand: hands[seat] ? (E.sortHand ? E.sortHand(hands[seat].slice(), G.trump) : hands[seat].slice()) : [],
     legal: myTurnPlay ? E.legalCards(seat) : [],
-    turn: G.turn, trick: G.trick, trickNum: G.trickNum, lastWin: G.lastWin,
-    tricksWon: G.tricksWon,
-    bids: G.bids,                    // bids are public info
+    turn: G.turn, trick: G.trick || [], trickNum: G.trickNum || 0, lastWin: G.lastWin,
+    tricksWon: G.tricksWon || {},
+    bids: G.bids || [],                    // bids are public info
     bidOptions: myBid ? E.bidOptions(seat) : null,
     pushEligible: E.pushEligible(seat),
     formeEligible: E.formeEligible2(seat),
-    blindQueue: G.blindQueue, blind: G.blind, eligible: G.eligible||[],
+    blindQueue: G.blindQueue || [], blind: G.blind, eligible: G.eligible||[],
     pendingChoice: G.pendingChoice,
-    handCounts: (G.hands||[]).map(h => h ? h.length : 0),
+    handCounts: hands.map(h => h ? h.length : 0),
     summaryRows: G.phase==='summary' ? G.summaryRows : null,
     summaryThrown: G.summaryThrown,
     winner: G.winner || null,
@@ -138,6 +154,14 @@ function broadcast(room) {
   }
 }
 
+// wrap every engine call in route handlers so a throw never kills the process
+function guard(handler){
+  return async (req, res) => {
+    try { await handler(req, res); }
+    catch (e) { console.error('handler error:', e.message); try { json(res, 500, { error: 'server error' }); } catch(_){} }
+  };
+}
+
 // ---------- HTTP ----------
 const clientHtml = () => fs.readFileSync(path.join(__dirname, 'bidwiz-online.html'));
 function json(res, code, obj) {
@@ -150,6 +174,7 @@ function body(req) {
 }
 
 const server = http.createServer(async (req, res) => {
+  try {
   const u = new URL(req.url, 'http://x');
   if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/index.html')) {
     res.writeHead(200, {'Content-Type':'text/html'}); res.end(clientHtml()); return;
@@ -259,6 +284,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 404, { error:'unknown session' });
   }
   res.writeHead(404); res.end('not found');
+  } catch (e) { console.error('request error:', e.message); try { json(res, 500, { error:'server error' }); } catch(_){} }
 });
 
 server.listen(PORT, () => {
