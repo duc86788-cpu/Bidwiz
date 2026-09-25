@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BidWiz</title>
+<style>
+:root{
+  --bg:#0d1f16; --felt:#123524; --felt2:#0e2b1d; --gold:#d4af37; --gold2:#f0d878;
+  --ink:#f4efe4; --dim:#9db3a6; --red:#c0392b; --cardbg:#fdfdf8; --shadow:0 4px 14px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+body{margin:0; font-family:Georgia,'Times New Roman',serif; background:radial-gradient(1200px 700px at 50% -10%, #1a4630, var(--felt) 55%, var(--felt2)); color:var(--ink); min-height:100vh}
+#app{max-width:820px; margin:0 auto; padding:14px 12px 40px}
+h1,h2,h3{margin:.2em 0; letter-spacing:.5px}
+.gold{color:var(--gold2)}
+.btn{display:inline-block; background:linear-gradient(180deg,#1d5c3c,#14422c); color:var(--ink); border:1px solid #2c7a4f;
+  border-radius:10px; padding:12px 18px; font-size:17px; font-family:inherit; cursor:pointer; margin:6px 4px; box-shadow:var(--shadow)}
+.btn:active{transform:translateY(1px)}
+.btn.gold{background:linear-gradient(180deg,#8a6d1d,#6b5314); border-color:var(--gold); color:#fff8e0}
+.btn.small{padding:7px 12px; font-size:14px}
+.btn:disabled{opacity:.35; cursor:default}
+.panel{background:rgba(0,0,0,.28); border:1px solid rgba(212,175,55,.35); border-radius:14px; padding:14px; margin:10px 0; box-shadow:var(--shadow)}
+.row{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+.scorebar{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:14px; color:var(--dim)}
+.scorebar b{color:var(--ink)}
+.trump-badge{display:inline-flex; align-items:center; gap:6px; background:rgba(212,175,55,.15); border:1px solid var(--gold);
+  border-radius:999px; padding:4px 12px; font-size:15px}
+.suitH,.suitD{color:#e05c5c} .suitS,.suitC{color:#dfe7ea}
+.card{display:inline-flex; flex-direction:column; justify-content:space-between; background:var(--cardbg); color:#111;
+  border-radius:9px; border:1px solid #b9b9a8; box-shadow:0 3px 8px rgba(0,0,0,.4);
+  width:58px; height:84px; padding:4px 6px; font-weight:bold; font-size:17px; line-height:1; cursor:pointer; user-select:none; flex:0 0 auto}
+.card .mid{align-self:center; font-size:26px}
+.card.red{color:#c0392b}
+.card.sel{outline:3px solid var(--gold)}
+.card.dead{opacity:.32; cursor:default; filter:grayscale(.6)}
+.card.back{background:repeating-linear-gradient(45deg,#274e68,#274e68 6px,#1d3d52 6px,#1d3d52 12px); border-color:#17324a}
+.mini{width:38px; height:54px; font-size:12px; padding:2px 4px}
+.mini .mid{font-size:16px}
+.hand{display:flex; gap:6px; overflow-x:auto; padding:10px 2px}
+.trickzone{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; min-height:80px; align-items:center; padding:8px}
+.tslot{display:flex; flex-direction:column; align-items:center; gap:3px; font-size:12px; color:var(--dim)}
+.tslot.win .card{outline:3px solid var(--gold)}
+table.sc{width:100%; border-collapse:collapse; font-size:15px}
+table.sc th,table.sc td{padding:7px 8px; text-align:left; border-bottom:1px solid rgba(212,175,55,.25)}
+.tag{font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid; margin-left:6px}
+.tag.ok{color:#7fe0a0; border-color:#2f8f57} .tag.bad{color:#f08a8a; border-color:#a04141} .tag.info{color:var(--gold2); border-color:var(--gold)}
+.banner{background:rgba(212,175,55,.14); border:1px solid var(--gold); padding:10px 14px; border-radius:10px; margin:8px 0; text-align:center}
+.dim{color:var(--dim)} .sm{font-size:13px}
+details.log{margin-top:8px} details.log summary{cursor:pointer; color:var(--dim)}
+details.log li{font-size:13px; color:#cfe0d4; margin:3px 0}
+input[type=text]{background:#0a1a12; border:1px solid #2c7a4f; color:var(--ink); border-radius:8px; padding:10px; font-size:16px; font-family:inherit; width:100%}
+.center{text-align:center}
+.big{font-size:22px}
+.modecard{border:1px solid #2c7a4f; border-radius:12px; padding:12px; cursor:pointer; margin:6px 0; background:rgba(0,0,0,.2)}
+.modecard.sel{border-color:var(--gold); background:rgba(212,175,55,.12)}
+.toggle{display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:15px}
+.footer-note{font-size:12px; color:var(--dim); text-align:center; margin-top:18px}
+.trophy{font-size:56px; text-align:center; margin:10px 0}
+@media (max-width:480px){ .card{width:50px;height:74px;font-size:15px}.card .mid{font-size:22px} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+/* ============================================================
+   BIDWIZ — v1.0 (first playable build, 24 Sep 2026)
+   Modes: 1v1 · 2v2 partners · cutthroat
+   Trump cycle: H → S → D → C → No Trump → repeat
+   ============================================================ */
+
+// ---------- constants ----------
+const SUITS = ['S','H','D','C'];
+const SUIT_CHAR = {S:'♠',H:'♥',D:'♦',C:'♣'};
+const SUIT_NAME = {S:'Spades',H:'Hearts',D:'Diamonds',C:'Clubs',NT:'No Trump'};
+const RANK_NAME = {11:'J',12:'Q',13:'K',14:'A'};
+const TRUMP_CYCLE = ['H','S','D','C','NT'];
+const TARGET = {partners:500, heads:500, cut:300};
+const rankChar = r => RANK_NAME[r] || String(r);
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const el = h => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function newDeck(){ const d=[]; for(const s of SUITS) for(let r=2;r<=14;r++) d.push({s,r}); return shuffle(d); }
+function sortHand(h, trump){
+  const order = s => s===trump ? 0 : SUITS.indexOf(s)+1;
+  return h.slice().sort((a,b)=> order(a.s)-order(b.s) || b.r-a.r);
+}
+function cardHTML(c, extra='', mini=false){
+  const red = (c.s==='H'||c.s==='D') ? 'red' : '';
+  return `<div class="card ${red} ${extra} ${mini?'mini':''}" data-card="${c.s}${c.r}">
+    <span>${rankChar(c.r)}</span><span class="mid">${SUIT_CHAR[c.s]}</span><span style="visibility:hidden">·</span></div>`;
+}
+function bidValue(n){ if(n>=10) return [0,0,0,0,0,0,0,0,0,0,200,300,400,500][n]; return 10*n; } // made bid points
+const bustValue = n => 10*n; // confirmed: bust on 10–13 loses the NORMAL value
+const blindMade = n => n===7 ? 140 : 400;
+const blindBust = n => n===7 ? 70 : 100;
+
+// ---------- state ----------
+let G = null;
+function freshGame(mode, names, pushEnabled){
+  const n = (mode==='heads') ? 2 : 4;
+  return {
+    mode, n, names, pushEnabled,
+    scores: new Array(n).fill(0),
+    teamMode: mode==='partners',
+    handNum: 0, firstDealer: 0, dealerIdx: 0,
+    phase: 'draw', // draw | blind | bidding | throwchoice | play | summary | over
+    // per-hand:
+    trump: null, hands: [], bids: [], blind: null, // blind: {side, num}
+    bidOrder: [], bidPos: 0, teamOpeners: {},
+    lead: 0, turn: 0, trick: [], trickNum: 0, tricksWon: {}, lastWin: null,
+    throwin: false, pendingChoice: null,
+    log: [], fast:false, formeTeam:{}, blindQueue:[],
+    robots: new Array(n).fill(false),
+  };
+}
+const teamOf = i => G.teamMode ? i%2 : i;
+const sideCount = () => G.teamMode ? 2 : G.n;
+function sides(){ // side descriptors for scoring/throw-in
+  if(G.teamMode) return [ {id:0,name:`Team A (${G.names[0]} + ${G.names[2]})`, seats:[0,2]}, {id:1,name:`Team B (${G.names[1]} + ${G.names[3]})`, seats:[1,3]} ];
+  return G.names.map((nm,i)=>({id:i, name:nm, seats:[i]}));
+}
+function sideOfSeat(i){ if(G.teamMode) return teamOf(i); return i; }
+function sideName(s){ return sides().find(x=>x.id===s).name; }
+function effectiveBidOfSide(sd){
+  if(G.blind && G.blind.side===sd.id) return {num:G.blind.num, blind:true};
+  if(G.teamMode){ // closer = later seat in bid order
+    const seat = sd.seats.slice().sort((a,b)=>G.bidOrder.indexOf(a)-G.bidOrder.indexOf(b))[1];
+    return {num:G.bids[seat].num, blind:false};
+  }
+  return {num:G.bids[sd.id].num, blind:false};
+}
+function logLine(t){ G.log.push(t); }
+
+// ---------- flow: start & dealer draw ----------
+function startGame(mode, names, pushEnabled){
+  G = freshGame(mode, names, pushEnabled);
+  render();
+}
+function doDraw(){
+  const deck = newDeck();
+  const picks = [];
+  for(let i=0;i<G.n;i++) picks.push({seat:i, card:deck.pop()});
+  let hi = Math.max(...picks.map(p=>p.card.r));
+  let tied = picks.filter(p=>p.card.r===hi);
+  while(tied.length>1){ // redraw ties
+    for(const t of tied) t.card = deck.pop();
+    hi = Math.max(...tied.map(p=>p.card.r));
+    tied = picks.filter(p=>p.card.r===hi);
+  }
+  G.firstDealer = tied[0].seat;
+  G.drawPicks = picks;
+  G.phase='drawShow';
+  render();
+}
+function confirmDraw(){
+  G.dealerIdx = G.firstDealer;
+  logLine(`High-card draw: ${G.names[G.firstDealer]} deals first.`);
+  startHand();
+}
+
+// ---------- flow: hand start, blind offer, deal ----------
+function startHand(){
+  G.handNum++;
+  G.trump = TRUMP_CYCLE[(G.handNum-1)%5];
+  G.dealerIdx = (G.firstDealer + G.handNum - 1) % G.n;
+  G.bids = []; for(let i=0;i<G.n;i++) G.bids.push(null);
+  G.blind=null; G.trick=[]; G.trickNum=0; G.tricksWon={}; G.lastWin=null; G.throwin=false;
+  G.teamOpeners={}; G.formeTeam={};
+  const order=[]; for(let k=1;k<=G.n;k++) order.push((G.dealerIdx+k)%G.n);
+  G.bidOrder=order; G.bidPos=0;
+  // blind eligibility: 100+ behind
+  G.eligible = [];
+  const sds = sides();
+  const best = Math.max(...G.scores);
+  for(const sd of sds){
+    const sScore = Math.max(...sd.seats.map(i=>G.scores[i]));
+    if(best - sScore >= 100) G.eligible.push(sd.id);
+  }
+  G.blindQueue = G.eligible.slice();
+  G.phase = G.blindQueue.length ? 'blind' : 'deal';
+  render();
+}
+function chooseBlind(sideId, num){ // num 7|10 or 0 = skip
+  // if the deciding side is robotic, pick automatically
+  if(G.blindQueue.length && sides().find(x=>x.id===G.blindQueue[0]).seats.some(isRobot)){
+    sideId=G.blindQueue[0]; num=aiChooseBlind();
+  }
+  if(num>0){ G.blind={side:sideId,num}; G.blindQueue=[]; logLine(`${sideName(sideId)} declares Blind ${num}.`); }
+  else { G.blindQueue.shift(); }
+  G.phase = G.blindQueue.length ? 'blind' : 'deal';
+  render();
+}
+function deal(){
+  const deck = newDeck();
+  G.hands = []; for(let i=0;i<G.n;i++) G.hands.push([]);
+  for(let k=0;k<13;k++) for(let i=0;i<G.n;i++) G.hands[(G.dealerIdx+1+i)%G.n].push(deck.pop());
+  logLine(`— Hand ${G.handNum} · Trump: ${SUIT_NAME[G.trump]} · Dealer: ${G.names[G.dealerIdx]} —`);
+  skipBidders();
+  G.phase='bidding'; render();
+}
+
+// ---------- bidding ----------
+function bidderSeat(){ return G.bidOrder[G.bidPos]; }
+function skipBidders(){
+  while(G.bidPos < G.bidOrder.length){
+    const i = bidderSeat();
+    if(G.blind && sideOfSeat(i)===G.blind.side){ logLine(`${G.names[i]} is Blind ${G.blind.num} — no bid.`); G.bidPos++; }
+    else break;
+  }
+}
+function bidOptions(i){
+  const isOpener = G.teamMode && G.teamOpeners[teamOf(i)]===undefined;
+  const openerNum = G.teamMode ? G.teamOpeners[teamOf(i)] : undefined;
+  let min=1, max=13, capNote='';
+  if(G.teamMode){
+    if(G.formeTeam[teamOf(i)]){ capNote='Your partner said "Bid for me" — your number is the team bid.'; }
+    else if(openerNum===undefined){ max=12; capNote='First number for a team caps at 12 so your partner can always close higher.'; }
+    else { min = openerNum+1; capNote=`You must top your partner's ${openerNum}.`; }
+  }
+  return {min,max,capNote,isOpener};
+}
+function pushEligible(i){
+  if(G.mode!=='partners' || !G.pushEnabled) return false;
+  if(G.teamOpeners[teamOf(i)]!==undefined) return false;
+  const pb=G.bids[(i+2)%4];
+  return !(pb && pb.forme);
+}
+function formeEligible(i){
+  if(G.mode!=='partners') return false;
+  const p = (i+2)%4;
+  return G.bids[p]===null || G.bids[p].forme===true && false; // partner must not have acted at all
+}
+function partnerNotActed(i){ const p=(i+2)%4; return G.bids[p]===null; }
+function submitBid(i, num, push, forme){
+  if(forme){ G.bids[i]={forme:true}; G.formeTeam[teamOf(i)]=true; logLine(`${G.names[i]}: "Bid for me."`); }
+  else {
+    G.bids[i]={num, push:!!push};
+    if(G.teamMode && G.teamOpeners[teamOf(i)]===undefined) G.teamOpeners[teamOf(i)]=num;
+    logLine(`${G.names[i]} bids ${num}${push?' and a push':''}.`);
+  }
+  G.bidPos++; skipBidders();
+  if(G.bidPos>=G.bidOrder.length) resolveBids(); else render();
+}
+function resolveBids(){
+  const sds = sides();
+  const ebs = sds.map(sd=>({sd, ...effectiveBidOfSide(sd)}));
+  const combined = ebs.reduce((a,e)=>a+e.num,0);
+  logLine(`Combined bids: ${combined}.`);
+  if(G.mode!=='cut' && G.trump!=='NT' && combined<=10){
+    const hasBlind = !!G.blind;
+    if(hasBlind){
+      G.pendingChoice={who:G.blind.side, blind:true, combined};
+      G.phase='throwchoice';
+    } else {
+      const tie = ebs[0].num===ebs[1].num;
+      if(tie){ logLine(`Bids tied at ${ebs[0].num} — automatic throw-in.`); applyThrowIn(); return; }
+      const big = ebs[0].num>ebs[1].num ? ebs[0].sd.id : ebs[1].sd.id;
+      G.pendingChoice={who:big, blind:false, combined};
+      G.phase='throwchoice';
+    }
+    render(); return;
+  }
+  startPlay();
+}
+function applyThrowIn(){
+  const sds=sides();
+  let rows=[];
+  for(const sd of sds){
+    const eb = effectiveBidOfSide(sd);
+    let pts;
+    if(eb.blind) pts = eb.num===7?70:100; // flagged assumption: blind team gets NORMAL value on a throw-in
+    else pts = 10*eb.num;
+    G.scores[sd.seats[0]]+=pts; if(G.teamMode) G.scores[sd.seats[1]]+=pts;
+    rows.push({name:sd.name, bid:eb.num+(eb.blind?' (blind)':''), tricks:'—', made:true, pts});
+    logLine(`Throw-in: ${sd.name} scores +${pts}.`);
+  }
+  G.throwin=true;
+  showSummary(rows, true);
+}
+
+// ---------- play ----------
+function firstLeader(){
+  for(const i of G.bidOrder){ const b=G.bids[i]; if(b) return i; }
+  return G.bidOrder[0];
+}
+function startPlay(){
+  G.lead = firstLeader(); G.turn = G.lead; G.phase='play';
+  logLine(`${G.names[G.lead]} leads.`);
+  render();
+}
+function legalCards(i){
+  const h=G.hands[i];
+  if(G.trick.length===0) return h.slice();
+  const led=G.trick[0].card.s;
+  const follow=h.filter(c=>c.s===led);
+  return follow.length?follow:h.slice();
+}
+function playCard(i, card){
+  const h=G.hands[i];
+  const idx=h.findIndex(c=>c.s===card.s&&c.r===card.r);
+  if(idx<0) return;
+  const legal=legalCards(i);
+  if(!legal.some(c=>c.s===card.s&&c.r===card.r)) return;
+  h.splice(idx,1);
+  G.trick.push({seat:i, card});
+  logLine(`${G.names[i]} plays ${rankChar(card.r)}${SUIT_CHAR[card.s]}.`);
+  if(G.trick.length===G.n){ resolveTrick(); } else { G.turn=(G.turn+1)%G.n; render(); }
+}
+function computeWinner(trick, trump){
+  // trick: [{seat, card}]; returns winning seat. Ace high; trump beats led suit; higher wins ties.
+  const led=trick[0].card.s;
+  let best=trick[0];
+  for(const p of trick.slice(1)){
+    const pT = trump!=='NT' && p.card.s===trump;
+    const bT = trump!=='NT' && best.card.s===trump;
+    if(pT && !bT) best=p;
+    else if(pT && bT && p.card.r>best.card.r) best=p;
+    else if(!bT && p.card.s===led && p.card.r>best.card.r) best=p;
+  }
+  return best.seat;
+}
+function resolveTrick(){
+  const w=computeWinner(G.trick, G.trump);
+  G.lastWin=w;
+  const side=sideOfSeat(w);
+  G.tricksWon[side]=(G.tricksWon[side]||0)+1;
+  G.trickNum++;
+  logLine(`${G.names[w]} takes trick ${G.trickNum}.`);
+  G.phase='trickwon';
+  render();
+  if(G.fast){ nextAfterTrick(w); return; }
+  setTimeout(()=>{ if(G.phase==='trickwon') nextAfterTrick(w); }, 1400);
+}
+function nextAfterTrick(w){
+  if(G.trickNum>=13){ scoreHand(); return; }
+  G.trick=[]; G.lead=w; G.turn=w; G.phase='play'; render();
+}
+
+// ---------- scoring ----------
+function scoreHand(){
+  const sds=sides();
+  const rows=[];
+  for(const sd of sds){
+    const eb=effectiveBidOfSide(sd);
+    const tricks=G.tricksWon[sd.id]||0;
+    const made=tricks>=eb.num;
+    let pts;
+    if(eb.blind) pts = made? blindMade(eb.num) : -blindBust(eb.num);
+    else pts = made? bidValue(eb.num) : -bustValue(eb.num);
+    G.scores[sd.seats[0]]+=pts; if(G.teamMode) G.scores[sd.seats[1]]+=pts;
+    rows.push({name:sd.name, bid:eb.num+(eb.blind?' (blind)':''), tricks, made, pts});
+    logLine(`${sd.name}: bid ${eb.num}, took ${tricks} → ${pts>=0?'+':''}${pts}.`);
+  }
+  showSummary(rows,false);
+}
+function showSummary(rows, thrown){
+  G.phase='summary'; G.summaryRows=rows; G.summaryThrown=thrown; render();
+}
+function nextHand(){
+  const target = TARGET[G.mode];
+  const sds=sides();
+  const over = sds.map(sd=>({sd, sc:Math.max(...sd.seats.map(i=>G.scores[i]))}))
+                  .filter(x=>x.sc>=target);
+  if(over.length===1){ G.winner=over[0]; G.phase='over'; render(); return; }
+  if(over.length>1){
+    over.sort((a,b)=>b.sc-a.sc);
+    if(over[0].sc>over[1].sc){ G.winner=over[0]; G.phase='over'; render(); return; }
+    logLine(`Tied at ${over[0].sc}+ — next hand decides.`);
+  }
+  startHand();
+}
+
+// ---------- AI opponents ----------
+function isRobot(i){ return !G || G.robots[i]; }
+function aiBid(i){
+  // hand strength estimate: high cards + trump suit length (calibrated vs sim data)
+  const h=G.hands[i]; const trump=G.trump;
+  let str=0;
+  for(const c of h){ str += (c.r>=13?1.5:(c.r===12?0.7:0)); }   // A/K/Q counting honors
+  if(trump!=='NT'){
+    const t=h.filter(c=>c.s===trump).length;
+    str += t>=6?3.4:(t>=5?2.5:(t>=4?1.5:(t>=3?0.7:0)));         // trump length
+  }
+  let n = Math.max(1, Math.round(str*0.85));
+  // bid to MAKE: shave the estimate — a busted bid is worse than a small made one
+  if(trump==='NT') n = Math.max(1, n-1); // NT is the hardest to judge
+  n = Math.max(1, n-1);
+  // recovery mode: deeply underwater → bid safe and low to climb back
+  if(G.scores[i] < -2000) n = 1;
+  else if(G.scores[i] < -500) n = Math.min(n, 2);
+  // fit within the table: total bids cannot exceed 13 tricks
+  const claimed = G.bids.reduce((a,b)=>a+(b&&b.num?b.num:0),0);
+  n = Math.max(1, Math.min(n, 13-claimed));
+  const o=bidOptions(i);
+  if(o.min>1) return o.min;      // closing a partner: just top minimally
+  n=Math.max(o.min, Math.min(o.max, n));
+  return n;
+}
+function aiChooseBlind(){
+  // blind choice: high variance — only take it when truly desperate
+  const sd=G.blindQueue[0];
+  const seats=sides().find(x=>x.id===sd).seats;
+  const best=Math.max(...G.scores);
+  const mine=Math.max(...seats.map(i=>G.scores[i]));
+  const gap=best-mine;
+  // never blind from deep in the hole: grind normal bids instead of spiraling
+  if(gap<300 || mine<-200) return 0;
+  return gap>=600 && Math.random()<0.3 ? 10 : 7;
+}
+function aiPlay(i){
+  const legal=legalCards(i);
+  if(legal.length===1) return legal[0];
+  const trump=G.trump; const led=G.trick.length?G.trick[0].card.s:null;
+  const mySide=sideOfSeat(i);
+  const trickPts=(n)=>n; // tricks are the currency
+  const canWinNow=(c)=>{ // would c win the trick as it stands?
+    const t=G.trick.concat([{seat:i, card:c}]);
+    return computeWinner(t, trump)===i;
+  };
+  const curWin= G.trick.length? computeWinner(G.trick, trump) : null;
+  const curWinSide= curWin!==null? sideOfSeat(curWin) : null;
+  const bySuit=s=>legal.filter(c=>c.s===s).sort((a,b)=>b.r-a.r);
+  const lowest=(arr)=>arr.slice().sort((a,b)=>a.r-b.r)[0];
+  const highest=(arr)=>arr.slice().sort((a,b)=>b.r-a.r)[0];
+
+  // leading
+  if(!led){
+    // prefer a suit where I hold the boss card (highest remaining likely winner)
+    for(const s of SUITS){
+      if(trump!=='NT' && s===trump) continue;
+      const mine=bySuit(s);
+      if(mine.length && mine[0].r===14) return mine[0]; // cash the ace
+    }
+    return lowest(legal); // otherwise lead low
+  }
+  // following
+  const following=legal.filter(c=>c.s===led);
+  if(following.length){
+    const winners=following.filter(canWinNow);
+    const partnerWinning = curWin!==null && curWinSide===mySide;
+    if(partnerWinning){
+      // partner has it: dump the lowest
+      return lowest(following);
+    }
+    if(winners.length){
+      // third hand / last hand: win as cheaply as possible
+      return lowest(winners);
+    }
+    return lowest(following);
+  }
+  // void in led suit
+  const trumps = trump!=='NT' ? bySuit(trump) : [];
+  if(trumps.length){
+    const wouldWin=canWinNow(trumps[trumps.length-1]);
+    const partnerWinning = curWin!==null && curWinSide===mySide;
+    const blindRush = G.blind && G.blind.side===mySide;
+    if(wouldWin && !partnerWinning && (G.trick.length===G.n-1 || blindRush)){
+      // ruff only when it's the last seat or blind urgency
+      return trumps[trumps.length-1]; // cheapest trump that wins
+    }
+  }
+  return lowest(legal); // discard
+}
+
+// ---------- rendering ----------
+let hideFor=null, pendingFn=null;
+function passTo(i, fn){ hideFor=i; pendingFn=fn; render(); }
+function reveal(){ const f=pendingFn; hideFor=null; pendingFn=null; if(f) f(); }
+
+function render(){
+  const app=$('app'); if(!G){ app.innerHTML=setupHTML(); wireSetup(); return; }
+  if(hideFor!==null){ app.innerHTML=passHTML(hideFor); return; }
+  switch(G.phase){
+    case 'draw': app.innerHTML=drawHTML(false); break;
+    case 'drawShow': app.innerHTML=drawHTML(true); break;
+    case 'blind': {
+      const sd=sides().find(x=>x.id===G.blindQueue[0]);
+      if(sd.seats.some(isRobot)){ chooseBlind(G.blindQueue[0], aiChooseBlind()); return; }
+      app.innerHTML=blindHTML(); break;
+    }
+    case 'deal':
+      if(isRobot(G.bidOrder[0])){ deal(); return; }
+      passTo(G.bidOrder[0], deal); return;
+    case 'bidding': {
+      const b=bidderSeat();
+      if(isRobot(b)){ const n=aiBid(b); submitBid(b, n, false, false); return; }
+      passTo(b, showBidUI); return;
+    }
+    case 'throwchoice': {
+      const sd=sides().find(x=>x.id===G.pendingChoice.who);
+      if(sd.seats.some(isRobot)){
+        // robot: take the sure points unless blind (chase the bonus)
+        if(G.pendingChoice.blind) playOut(); else throwIn();
+        return;
+      }
+      app.innerHTML=throwChoiceHTML(); break;
+    }
+    case 'play':
+      if(isRobot(G.turn)){
+        const seat=G.turn, c=aiPlay(seat);
+        setTimeout(()=>{ if(G && G.phase==='play' && G.turn===seat) playCard(seat, c); }, 450);
+        return;
+      }
+      passTo(G.turn, showPlayUI); return;
+    case 'trickwon': app.innerHTML=playHTML(true); break;
+    case 'summary': app.innerHTML=summaryHTML(); break;
+    case 'over': app.innerHTML=overHTML(); break;
+  }
+}
+function passHTML(i){
+  return `<div class="panel center" style="margin-top:18vh">
+    <div style="font-size:52px">🂠</div>
+    <h2>Pass the device to <span class="gold">${G.names[i]}</span></h2>
+    <p class="dim">Others: look away now.</p>
+    <button class="btn gold" onclick="reveal()">I'm ${G.names[i]} — show my hand</button></div>`;
+}
+function headerHTML(){
+  const t=G.trump;
+  const tBadge = `<span class="trump-badge">👑 Trump: <b class="suit${t}">${t==='NT'?'No Trump':SUIT_CHAR[t]+' '+SUIT_NAME[t]}</b></span>`;
+  const sc = sides().map(sd=>`<span>${sd.name}: <b>${G.scores[sd.seats[0]]}${G.teamMode?'':''}</b></span>`).join(' · ');
+  return `<div class="scorebar"><span>Hand <b>${G.handNum}</b> · Dealer: <b>${G.names[G.dealerIdx]}</b></span>${tBadge}</div>
+    <div class="scorebar" style="margin-top:4px">${sc}</div>`;
+}
+function drawHTML(show){
+  const picks=G.drawPicks||[];
+  let inner='';
+  if(!show){
+    inner=`<h2 class="gold center">Draw for first dealer</h2>
+      <p class="dim center">Every player draws a card. Highest card deals.</p>
+      <div class="center"><button class="btn gold big" onclick="doDraw()">Draw cards</button></div>`;
+  } else {
+    inner=`<h2 class="gold center">The draw</h2>
+      <div class="row" style="justify-content:center">${picks.map(p=>
+        `<div class="tslot">${cardHTML(p.card)}<span>${G.names[p.seat]}</span></div>`).join('')}</div>
+      <p class="center big">👑 <span class="gold">${G.names[G.firstDealer]}</span> deals first.</p>
+      <div class="center"><button class="btn gold big" onclick="confirmDraw()">Start Hand 1 — Hearts are trump</button></div>`;
+  }
+  return `<div class="panel">${inner}</div>`;
+}
+function blindHTML(){
+  const sd=sides().find(s=>s.id===G.blindQueue[0]);
+  return `<div class="panel">${headerHTML()}
+    <h2 class="gold">Blind bid?</h2>
+    <p class="dim"><b>${sd.name}</b> is 100+ points behind and may declare a blind bid <b>before the deal</b>.</p>
+    <p class="sm dim">Blind 7: make 7+ tricks = <b>+140</b>, fewer = <b>−70</b>. Blind 10: make 10+ = <b>+400</b>, fewer = <b>−100</b>. The blind bid replaces your normal bid.</p>
+    <div class="panel"><b>${sd.name}</b><br>
+      <button class="btn" onclick="chooseBlind(${sd.id},7)">Blind 7</button>
+      <button class="btn" onclick="chooseBlind(${sd.id},10)">Blind 10</button>
+      <button class="btn small" onclick="chooseBlind(${sd.id},0)">Play normal</button></div>
+  </div>`;
+}
+function bidHistoryHTML(){
+  const chips=G.bidOrder.slice(0,G.bidPos).map(i=>{
+    const b=G.bids[i];
+    if(!b) return '';
+    const t = b.forme? `"bid for me"` : `${b.num}${b.push?' and a push':''}`;
+    return `<span class="trump-badge" style="font-size:13px">${G.names[i]}: ${t}</span>`;
+  }).join(' ');
+  return chips? `<div class="row" style="margin:6px 0">${chips}</div>` : '';
+}
+function showBidUI(){
+  G.phase='bidding';
+  const i=bidderSeat();
+  const {min,max,capNote,isOpener}=bidOptions(i);
+  const myHand=sortHand(G.hands[i],G.trump);
+  const canPush=pushEligible(i);
+  const canForme=pushEligible_or_forme(i);
+  let nums='';
+  for(let n=1;n<=13;n++){
+    const dis = n<min || n>max;
+    nums+=`<button class="btn ${dis?'':'gold'}" ${dis?'disabled':''} onclick="pickBid(${n})" style="min-width:52px">${n}</button>`;
+  }
+  $('app').innerHTML=`<div class="panel">${headerHTML()}
+    <h2 class="gold">${G.names[i]} — your bid</h2>
+    ${G.blind&&sideOfSeat(i)===G.blind.side?`<div class="banner">You are Blind ${G.blind.num} — no bid needed.</div>`:''}
+    ${bidHistoryHTML()}
+    <div class="sm dim">${capNote}</div>
+    <div class="hand">${myHand.map(c=>cardHTML(c,'',true)).join('')}</div>
+    <div class="row" style="margin-top:6px">
+      ${canPush?`<label class="toggle"><input type="checkbox" id="pushChk"> and a push <span class="sm dim">(info only)</span></label>`:''}
+      ${canForme?`<button class="btn small" onclick="pickForme()">“Bid for me”</button>`:''}
+    </div>
+    <div class="row" style="justify-content:center;margin-top:8px">${nums}</div>
+    <div class="sm dim center" style="margin-top:6px">Tap a number to bid. Minimum 1.</div>
+  </div>`;
+}
+function pushEligible_or_forme(i){ return formeEligible2(i); }
+function formeEligible2(i){
+  if(G.mode!=='partners') return false;
+  return partnerNotActed(i);
+}
+function pickBid(n){
+  const i=bidderSeat();
+  const push = $('pushChk') ? $('pushChk').checked : false;
+  submitBid(i,n,push,false);
+}
+function pickForme(){ submitBid(bidderSeat(),0,false,true); }
+
+function throwChoiceHTML(){
+  const pc=G.pendingChoice;
+  const who=sideName(pc.who);
+  return `<div class="panel center">${headerHTML()}
+    <h2 class="gold">Throw-in?</h2>
+    <p>Combined bids: <b>${pc.combined}</b> (10 or fewer).</p>
+    ${pc.blind?`<p class="dim">You are bidding Blind — you may play it out instead of throwing in.</p>`:`<p class="dim">${who} holds the bigger bid and chooses.</p>`}
+    <button class="btn" onclick="throwIn(${pc.who})">Throw in — take the points</button>
+    <button class="btn gold" onclick="playOut()">Play it out</button>
+    <p class="sm dim">Throw-in: both sides score their bids as if made, next deal is dealt.</p></div>`;
+}
+function throwIn(){ applyThrowIn(); }
+function playOut(){ logLine(`${sideName(G.pendingChoice.who)} plays it out.`); startPlay(); }
+
+function playHTML(trickShown){
+  const i=G.turn;
+  const myHand=sortHand(G.hands[i],G.trump);
+  const legal=legalCards(i);
+  const legalKey=new Set(legal.map(c=>c.s+c.r));
+  const tw=sides().map(sd=>`<span>${sd.name}: <b>${G.tricksWon[sd.id]||0}</b>/${effectiveBidOfSide(sd).num}</span>`).join(' · ');
+  const eb=effectiveBidOfSide(sides().find(x=>x.id===sideOfSeat(i)));
+  let trickHTML='';
+  if(G.trick.length||trickShown){
+    trickHTML=`<div class="trickzone">${G.trick.map(p=>
+      `<div class="tslot ${G.lastWin===p.seat&&trickShown?'win':''}">${cardHTML(p.card,'',true)}<span>${G.names[p.seat]}</span></div>`).join('')}</div>`;
+  }
+  const banner = trickShown? `<div class="banner big">🏆 ${G.names[G.lastWin]} takes the trick</div>`:'';
+  return `<div class="panel">${headerHTML()}
+    <div class="scorebar" style="margin:6px 0">${tw}</div>
+    ${banner}${trickHTML}
+    <h3>${G.names[i]} — your play ${eb.blind?`<span class="tag info">Blind ${eb.num}</span>`:`<span class="tag info">bid ${eb.num}</span>`}</h3>
+    <div class="hand">${myHand.map(c=>cardHTML(c, legalKey.has(c.s+c.r)?'':'dead')).join('')}</div>
+    <div class="sm dim">Must follow suit if you can. Void? Trump in or discard.</div>
+  </div>`;
+}
+function showPlayUI(){ G.phase='play'; $('app').innerHTML=playHTML(false); }
+function tryPlay(cardKey){
+  const s=cardKey[0], r=parseInt(cardKey.slice(1));
+  const i=G.turn;
+  playCard(i,{s,r});
+}
+
+function summaryHTML(){
+  const rows=G.summaryRows;
+  const sds=sides();
+  return `<div class="panel center">${headerHTML()}
+    <h2 class="gold">${G.throwin?'Thrown in — points taken':'Hand '+G.handNum+' scored'}</h2>
+    <table class="sc"><tr><th>Side</th><th>Bid</th><th>Tricks</th><th>Result</th><th>Points</th><th>Total</th></tr>
+    ${rows.map(rw=>{
+      const sd=sds.find(x=>x.name===rw.name);
+      return `<tr><td>${rw.name}</td><td>${rw.bid}</td><td>${rw.tricks}</td>
+      <td><span class="tag ${rw.made?'ok':'bad'}">${rw.made?'MADE':'BUST'}</span></td>
+      <td>${rw.pts>=0?'+':''}${rw.pts}</td><td><b>${G.scores[sd.seats[0]]}</b></td></tr>`;}).join('')}
+    </table>
+    <button class="btn gold big" onclick="nextHand()">Next hand</button></div>`;
+}
+function overHTML(){
+  const w=G.winner;
+  return `<div class="panel center" style="margin-top:10vh">
+    <div class="trophy">👑</div>
+    <h1 class="gold">${w.sd.name} wins!</h1>
+    <p class="big">${G.scores[w.sd.seats[0]]} points</p>
+    <button class="btn" onclick="location.reload()">New game</button></div>`;
+}
+
+// ---------- setup ----------
+let selMode='partners';
+function setupHTML(){
+  return `<div class="panel center">
+    <h1 class="gold">🂡 BidWiz</h1>
+    <p class="dim">Bid the tricks. Make the bid. Rule the table.</p>
+    <h3>Choose game mode</h3>
+    <div class="modecard ${selMode==='heads'?'sel':''}" onclick="selMode='heads';render()"><b>1 v 1 — Heads up</b><div class="sm dim">Two players, 13 cards each. First to 500.</div></div>
+    <div class="modecard ${selMode==='partners'?'sel':''}" onclick="selMode='partners';render()"><b>2 v 2 — Partners</b><div class="sm dim">P1+P3 vs P2+P4. First team to 500. “Bid for me” &amp; push available.</div></div>
+    <div class="modecard ${selMode==='cut'?'sel':''}" onclick="selMode='cut';render()"><b>1 v 1 v 1 v 1 — Cutthroat</b><div class="sm dim">Every player for themselves. First to 300. No throw-in.</div></div>
+    <h3>Player names</h3>
+    <div id="nameFields"></div>
+    <div id="botFields"></div>
+    <label class="toggle" style="margin:10px 0"><input type="checkbox" id="pushSet"> Allow “and a push” (partners mode, first bidder only)</label>
+    <div><button class="btn gold big" onclick="beginGame()">Start game</button></div>
+    <details class="log" style="text-align:left"><summary>📖 Full rules</summary><div style="font-size:13px; line-height:1.5">
+      <b>Trump rotation:</b> Hand 1 Hearts, 2 Spades, 3 Diamonds, 4 Clubs, 5 No Trump, then repeats.<br>
+      <b>Dealer:</b> high card deals first; dealer moves left each hand and always closes the bid. Player left of dealer bids first.<br>
+      <b>Bids:</b> number of tricks you'll take, minimum 1. Partners: the closer's number is the team bid; a later teammate must top his own partner's number (per-team ratchet).<br>
+      <b>“Bid for me”</b> (partners only, before your partner bids): hand your voice to the strong hand; they make one team bid.<br>
+      <b>“And a push”</b> (optional setting; partners only; first bidder of a team): “2 and a push” = 2 likely + 1 maybe. Info only — no scoring effect.<br>
+      <b>Throw-in</b> (partners &amp; heads-up, never No Trump): combined bids ≤10 → both sides score their bids and the next deal is dealt. Bigger-bid side may play it out. Bids tied ≤10 → automatic throw-in.<br>
+      <b>Blind bids</b> (100+ points behind, declared before the deal): Blind 7 = +140/−70, Blind 10 = +400/−100. Replaces your normal bid; blind bidder may always choose to play out a low combined bid.<br>
+      <b>Scoring:</b> bid 1–9 = ±10×bid. Bid 10/11/12/13 made = +200/+300/+400/+500; bust loses the normal value (−100/−110/−120/−130). Overtricks score nothing.<br>
+      <b>Play:</b> first bidder leads; winner of each trick leads next. Ace high. Follow suit if you can; void → trump in or discard.<br>
+      <b>Win:</b> first team/player to 500 (300 in cutthroat). Tied at the target → next hand decides.
+    </div></details>
+    <div class="footer-note">BidWiz v1.0 · pass-and-play on one device</div>
+  </div>`;
+}
+function wireSetup(){
+  const nf=$('nameFields');
+  const n=(selMode==='heads')?2:4;
+  let h='';
+  let bh='';
+  for(let i=0;i<n;i++){ h+=`<div style="margin:6px 0"><input type="text" id="nm${i}" placeholder="Player ${i+1}" value="${G&&G.names&&G.names[i]?G.names[i]:''}"></div>`;
+    bh+=`<label class="toggle" style="margin:2px 0"><input type="checkbox" id="bot${i}"> Seat ${i+1} is a robot (AI plays this seat)</label>`; }
+  $('botFields').innerHTML=bh;
+  if(n===2) h+=`<div class="sm dim" style="text-align:left">Heads-up: 13 cards each, 26 set aside. Bids run 1–13.</div>`;
+  nf.innerHTML=h;
+}
+function beginGame(){
+  const n=(selMode==='heads')?2:4;
+  const names=[]; for(let i=0;i<n;i++){ const v=$('nm'+i).value.trim(); names.push(v||('P'+(i+1))); }
+  const push=$('pushSet').checked;
+  startGame(selMode, names, push);
+  for(let i=0;i<n;i++) G.robots[i]=$('bot'+i).checked;
+  render();
+}
+
+// ---------- console test API ----------
+window.BW={
+  get G(){return G;},
+  bid(n,push){ submitBid(bidderSeat(),n,!!push,false); },
+  forme(){ submitBid(bidderSeat(),0,false,true); },
+  play(cardKey){ const s=cardKey[0], r=parseInt(cardKey.slice(1)); playCard(G.turn,{s,r}); },
+  auto(hands=6){ // random-legal autoplay for testing
+    G.fast=true;
+    let guard=0;
+    while(guard++<20000){
+      if(G.phase==='over') break;
+      if(G.phase==='bidding'){ const {min,max}=bidOptions(bidderSeat()); BW.bid(min+Math.floor(Math.random()*(Math.max(max,min)-min+1))); }
+      else if(G.phase==='play'){ const L=legalCards(G.turn); const c=L[Math.floor(Math.random()*L.length)]; BW.play(c.s+c.r); }
+      else if(G.phase==='throwchoice'){ Math.random()<0.5?playOut():throwIn(); }
+      else if(G.phase==='summary'){ nextHand(); }
+      else if(G.phase==='blind'){ chooseBlind(G.eligible[Math.floor(Math.random()*G.eligible.length)], Math.random()<0.5?7:10); }
+      else if(G.phase==='draw'){ doDraw(); }
+      else if(G.phase==='drawShow'){ confirmDraw(); }
+      else if(G.phase==='deal'){ deal(); }
+    }
+    return {hand:G.handNum, phase:G.phase, scores:G.scores.slice(), tricks:G.tricksWon};
+  }
+};
+render();
+</script>
+</body>
+</html>

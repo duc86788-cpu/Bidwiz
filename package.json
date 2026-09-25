@@ -1,0 +1,13 @@
+{
+  "name": "bidwiz-online",
+  "version": "1.1.0-beta",
+  "private": true,
+  "description": "BidWiz online multiplayer card game — zero-dependency Node server",
+  "main": "bidwiz-server.js",
+  "scripts": {
+    "start": "node bidwiz-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
