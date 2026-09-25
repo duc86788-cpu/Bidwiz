@@ -47,11 +47,24 @@
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div class="panel"><h1 class="center">🂡 BidWiz</h1><p class="dim center" style="margin-top:10px">Loading… If this message stays visible, something is blocked — tell BabyBot what you see.</p></div></div>
+<script>
+window.onerror = function(msg){
+  try {
+    document.getElementById('app').innerHTML =
+      '<div class="panel"><h1>⚠️ Startup problem</h1><p class="sm" style="margin-top:8px;word-break:break-all">' + String(msg) + '</p><p class="sm dim" style="margin-top:8px">Screenshot this and send it to BabyBot.</p></div>';
+  } catch(e) {}
+};
+</script>
 <script>
 let V = null;          // last server view
-let TOK = localStorage.getItem('bw_token') || '';
-let CODE = localStorage.getItem('bw_code') || '';
+// storage that survives private mode / in-app browsers (falls back to memory)
+const store = (() => {
+  try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
+  catch (e) { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, clear: () => { for (const k in m) delete m[k]; } }; }
+})();
+let TOK = store.getItem('bw_token') || '';
+let CODE = store.getItem('bw_code') || '';
 const $ = id => document.getElementById(id);
 const SUITC = { H:'♥', S:'♠', D:'♦', C:'♣' };
 const REDS = new Set(['H','D']);
@@ -96,7 +109,7 @@ async function createTable(){
   const mode = $('hmode').value, push = $('hpush').checked;
   const r = await api('/api/create', { name, mode, push });
   TOK = r.token; CODE = r.code;
-  localStorage.setItem('bw_token', TOK); localStorage.setItem('bw_code', CODE);
+  store.setItem('bw_token', TOK); store.setItem('bw_code', CODE);
   listen();
 }
 async function joinTable(){
@@ -105,7 +118,7 @@ async function joinTable(){
   const r = await api('/api/join', { name, code });
   if (r.error) { alert(r.error); return; }
   TOK = r.token; CODE = r.code;
-  localStorage.setItem('bw_token', TOK); localStorage.setItem('bw_code', CODE);
+  store.setItem('bw_token', TOK); store.setItem('bw_code', CODE);
   listen();
 }
 
@@ -222,7 +235,7 @@ function overHTML(){
     <h1>🏆 ${esc(V.winner.name)}</h1>
     <p class="big">Final: ${V.names.map((n,i)=>esc(n)+' '+V.scores[i]).join(' · ')}</p>
     ${V.host ? `<button class="btn gold big" onclick="act('again')">Play again</button>` : `<p class="dim">Host can start a rematch.</p>`}
-    <p><button class="btn" onclick="localStorage.clear();location.reload()">Leave table</button></p>
+    <p><button class="btn" onclick="store.clear();location.reload()">Leave table</button></p>
   </div>`;
 }
 
@@ -231,7 +244,7 @@ window.act = act; window.createTable = createTable; window.joinTable = joinTable
 if (TOK && CODE) {
   // try to resume an existing session
   fetch('/api/state?token=' + TOK).then(r => {
-    if (r.ok) { listen(); } else { localStorage.clear(); render(); }
+    if (r.ok) { listen(); } else { store.clear(); render(); }
   }).catch(() => render());
 } else render();
 </script>
