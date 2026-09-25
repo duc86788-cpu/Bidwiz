@@ -135,9 +135,8 @@ function act(type, extra){ api('/api/action', { token: TOK, type, ...extra }); }
 
 // ---------- render ----------
 function render(){
-  if (!V) return;
   const app = $('app');
-  if (V.phase === 'lobby') { app.innerHTML = lobbyHTML(); return; }
+  if (!V || V.phase === 'lobby') { app.innerHTML = lobbyHTML(); return; }  // no game state yet → show the lobby
   app.innerHTML = tableHTML();
 }
 
