@@ -136,8 +136,31 @@ function act(type, extra){ api('/api/action', { token: TOK, type, ...extra }); }
 // ---------- render ----------
 function render(){
   const app = $('app');
-  if (!V || V.phase === 'lobby') { app.innerHTML = lobbyHTML(); return; }  // no game state yet → show the lobby
+  if (!V || V.phase === 'lobby') {
+    // host of a not-yet-started table → waiting room with the Start button
+    app.innerHTML = (V && V.host) ? waitingHTML() : lobbyHTML();
+    return;
+  }
   app.innerHTML = tableHTML();
+}
+
+function waitingHTML(){
+  const seats = V.names.map((n,i) => {
+    const dot = V.robots[i] ? 'bot' : (V.connected[i] ? 'on' : 'off');
+    return `<div class="seat"><span class="dot ${dot}"></span>${esc(n)}${V.robots[i]?' <span class="sm dim">(robot)</span>':''}</div>`;
+  }).join('');
+  return `<div class="panel">
+    <h1 class="center">🂡 Table <span class="gold">${esc(V.code)}</span></h1>
+    <p class="dim center sm">Give this code to your friends: <b class="gold big">${esc(V.code)}</b> — at ${location.origin}</p>
+    <div class="seats" style="justify-content:center">${seats}</div>
+    <p class="sm dim center">Empty seats play as robots. Friends can join until you start.</p>
+    <p class="center"><button class="btn gold big" onclick="startGame()">Start game →</button></p>
+    <p class="center"><button class="btn" onclick="store.clear();location.reload()">Leave table</button></p>
+  </div>`;
+}
+
+async function startGame(){
+  await api('/api/start', { token: TOK });
 }
 
 function seatRow(){
@@ -238,7 +261,7 @@ function overHTML(){
   </div>`;
 }
 
-window.act = act; window.createTable = createTable; window.joinTable = joinTable;
+window.act = act; window.createTable = createTable; window.joinTable = joinTable; window.startGame = startGame;
 
 if (TOK && CODE) {
   // try to resume an existing session
