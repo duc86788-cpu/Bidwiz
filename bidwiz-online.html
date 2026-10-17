@@ -58,6 +58,15 @@
   .trickzone{ min-height:190px; gap:20px; }
   .tslot .card{ width:68px; height:96px; font-size:26px; cursor:default; }
   .tslot .card .s{ font-size:30px; }
+  .table{ position:relative; width:min(90vw,470px); aspect-ratio:1/1; margin:10px auto; background:#0f2b1d; border:2px solid var(--line); border-radius:18px; }
+  .pslot{ position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; max-width:44%; }
+  .pslot.bottom{ bottom:10px; left:50%; transform:translateX(-50%); }
+  .pslot.top{ top:10px; left:50%; transform:translateX(-50%); }
+  .pslot.left{ left:10px; top:50%; transform:translateY(-50%); }
+  .pslot.right{ right:10px; top:50%; transform:translateY(-50%); }
+  .plabel{ font-size:12.5px; color:var(--txt); white-space:nowrap; }
+  .card.empty{ background:transparent; border:1px dashed var(--line); width:56px; height:80px; }
+  .tablecenter{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; font-size:15px; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -208,7 +217,7 @@ function trumpTxt(){ return V.trump==='NT' ? 'No Trump' : `<span class="${REDS.h
 function tableHTML(){
   if (V.phase === 'over') return overHTML();
   const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · Hand <b>${V.handNum}</b> · Trump ${trumpTxt()} · ${V.mode}</span><span>${scorebar()}</span></div>
-    ${seatRow()}` + phaseArea();
+    ${(V.phase==='play'||V.phase==='trickwon') ? '' : seatRow()}` + phaseArea();
   if (V.mode === 'partners') {
     return `<div class="layout">
       <div class="col left"><div class="panel slim"><h3>Hand log</h3>${logHTML()}</div></div>
@@ -264,7 +273,8 @@ function bidArea(){
       ${V.formeEligible ? `<button class="btn" onclick="act('bid',{forme:true})">Bid for me</button>` : ''}`;
   } else {
     const done = (V.bids||[]).map((b,idx)=> b ? `${esc(V.names[idx])}: ${b.forme?'bid for me':b.num+(b.push?' +push':'')}` : null).filter(Boolean);
-    inner = `<div class="banner dim">Waiting for bids… ${done.length? 'So far: '+done.join(' · ') : ''}</div>`;
+    const turnName = esc((V.names||[])[V.bidTurn] || 'another player');
+    inner = `<div class="banner dim">⏳ Waiting for <b>${turnName}</b> to bid… ${done.length? 'So far: '+done.join(' · ') : ''}</div>`;
   }
   return `<h3>Bidding</h3>${inner}`;
 }
@@ -283,43 +293,54 @@ function blindArea(){
 
 function throwArea(){
   const mine = V.pendingChoice && V.pendingChoice.who === (V.mode==='partners' ? V.yourSeat%2 : V.yourSeat);
-  return `<div class="banner"><b>Combined bids ${V.pendingChoice.combined} ≤ 10 — throw in?</b></div>
-    ${mine ? `<div class="center"><button class="btn gold" onclick="act('throw',{choice:'in'})">Throw in — take the points</button>
-      <button class="btn" onclick="act('throw',{choice:'out'})">Play it out</button></div>`
-      : `<div class="banner dim">Waiting for the bigger-bid side to decide…</div>`}`;
+  return `<div class="banner"><b>⚠️ Combined bids ${V.pendingChoice.combined} ≤ 10 — throw-in decision</b> <span class="sm">(this is not bidding — choose below)</span></div>
+    ${mine ? `<div class="center"><button class="btn gold big" onclick="act('throw',{choice:'in'})">Throw in — take the points</button>
+      <button class="btn big" onclick="act('throw',{choice:'out'})">Play it out</button></div>`
+      : `<div class="banner dim">⏳ Waiting for the bigger-bid side (${esc((V.names||[]).find((n,i)=>(V.mode==='partners'? i%2 : i)===V.pendingChoice.who)||'other team')}) to decide…</div>`}`;
+}
+
+// clock-face table: you at 6 o'clock, partner 12, opponents 9 and 3; card appears in front of each player
+function clockTable(){
+  const me = V.yourSeat, n = (V.names||[]).length;
+  const pos = {};
+  if (n === 4) { pos[(me+1)%4] = 'left'; pos[(me+2)%4] = 'top'; pos[(me+3)%4] = 'right'; pos[me] = 'bottom'; }
+  else if (n === 2) { pos[me] = 'bottom'; pos[(me+1)%2] = 'top'; }
+  else { for (let i=0;i<n;i++) pos[i] = 'top'; pos[me] = 'bottom'; }
+  const nameOf = i => esc((V.names||[])[i] || 'Player ' + ((i||0)+1));
+  const played = {}; (V.trick||[]).forEach(p => played[p.seat] = p.card);
+  const winner = (V.lastWin !== null && V.lastWin !== undefined) ? V.lastWin : -1;
+  const slot = i => {
+    const dot = V.robots[i] ? 'bot' : (V.connected[i] ? 'on' : 'off');
+    const isTurn = (V.phase==='play' || V.phase==='trickwon') && V.turn===i;
+    const card = played[i];
+    const tricks = (V.tricksWon||{})[String(V.mode==='partners' ? i%2 : i)] || 0;
+    return `<div class="pslot ${pos[i]}">
+      <div class="plabel">${isTurn?'<span class="turn-tag">●</span> ':''}<span class="dot ${dot}"></span>${nameOf(i)}${V.mode==='partners'?` <span class="sm">· ${tricks}</span>`:''}</div>
+      ${card ? cardHTML(card, null, null) : '<div class="card empty"></div>'}
+    </div>`;
+  };
+  const center = V.phase==='trickwon' && winner>=0
+    ? `<div class="tablecenter gold">🏆 ${nameOf(winner)} took trick ${V.trickNum}</div>`
+    : `<div class="tablecenter dim sm">Trump ${trumpTxt()}<br>Trick ${(V.trickNum||0)+1}</div>`;
+  return `<div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}</div>`;
 }
 
 function playArea(){
   const legalSet = new Set((V.legal||[]).map(c=>c.s+c.r));
   const myTurn = V.phase==='play' && V.turn===V.yourSeat;
   const nameOf = i => esc((V.names||[])[i] || 'Player ' + ((i||0)+1));
-  const winner = (V.lastWin !== null && V.lastWin !== undefined) ? V.lastWin : -1;
-  // highlight the winning card while the finished trick is on the table
-  let trick = `<div class="trickzone">` + (V.trick||[]).map(p =>
-      `<div class="tslot">${cardHTML(p.card, null, null)}<div style="${p.seat===winner?'color:var(--gold);font-weight:bold':''}">${p.seat===winner?'🏆 ':''}${nameOf(p.seat)}</div></div>`).join('') + `</div>`;
   let msg;
-  if (V.phase === 'trickwon' && winner >= 0) {
-    msg = `<div class="banner"><b>🏆 ${nameOf(winner)} took trick ${V.trickNum}.</b></div>`;
+  if (V.phase === 'trickwon' && V.lastWin >= 0) {
+    msg = `<div class="banner"><b>🏆 ${nameOf(V.lastWin)} took trick ${V.trickNum}.</b></div>`;
   } else if (myTurn) {
     msg = `<div class="banner"><b>Your turn</b> — play a highlighted card.</div>`;
   } else {
     msg = `<div class="banner dim">Waiting… <b>${nameOf(V.turn)}</b> to play.</div>`;
   }
-  // recap of the previous trick while the next one is open
-  const recap = (V.phase === 'play' && winner >= 0 && (V.trick||[]).length === 0)
-    ? `<div class="bidsheet center">Last trick: ${nameOf(winner)} took it. Tricks so far — ${tricksTxt()}</div>` : '';
-  return `<h3>${V.phase==='trickwon' ? 'Trick ' + V.trickNum + ' won' : 'Trick ' + ((V.trickNum||0)+1)}</h3>${trick}${recap}${msg}
+  const recap = (V.phase === 'play' && V.lastWin >= 0 && (V.trick||[]).length === 0)
+    ? `<div class="bidsheet center">Last trick: ${nameOf(V.lastWin)} took it.</div>` : '';
+  return `${clockTable()}${recap}${msg}
     <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
-}
-
-function tricksTxt(){
-  const tw = V.tricksWon || {};
-  const parts = [];
-  for (const k of Object.keys(tw).sort()) {
-    const who = V.mode === 'partners' ? (k === '0' ? 'Team A' : 'Team B') : nameOf(parseInt(k,10));
-    parts.push(`${who} ${tw[k]}`);
-  }
-  return parts.length ? parts.join(' · ') : 'none yet';
 }
 
 function summaryArea(){
