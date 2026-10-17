@@ -42,7 +42,7 @@ function tok() { return crypto.randomBytes(12).toString('hex'); }
 
 function createRoom(hostName, mode, push) {
   const code = randCode();
-  const room = { code, mode: mode||'partners', push: !!push, seats:[null,null,null,null], E: makeEngine(), started:false, order:0 };
+  const room = { code, mode: mode||'partners', push: !!push, seats:[null,null,null,null], E: makeEngine(), started:false, order:0, history: [] };
   const t = tok();
   room.seats[0] = { name: clean(hostName)||'Host', token: t, robot:false };
   rooms.set(code, room);
@@ -97,6 +97,34 @@ function advanceRoom(room) {
   }
 }
 
+// ---------- per-hand history for the scoreboard ----------
+function teamBid(room, t) { // partners: effective bid of team t, or null until set
+  const E = room.E, G = E.Gref();
+  if (!G) return null;
+  if (G.blind && G.blind.side === t) return { num: G.blind.num, blind: true };
+  try {
+    const sd = E.sides().find(x => x.id === t);
+    const b = E.effectiveBidOfSide(sd);
+    return b && b.num !== undefined ? { num: b.num, blind: !!b.blind } : null;
+  } catch (e) { return null; }
+}
+function recordHistory(room) {
+  const E = room.E, G = E.Gref();
+  if (!G || G.phase !== 'summary' || !Array.isArray(G.summaryRows) || !G.summaryRows.length) return;
+  if (room.history.length && room.history[room.history.length - 1].hand === G.handNum) return;
+  const bids = [null, null, null, null], pts = [0, 0, 0, 0], blind = [false, false, false, false];
+  G.summaryRows.forEach((r, i) => { pts[i] = r.pts; });
+  if (G.mode === 'partners') {
+    for (const t of [0, 1]) {
+      const tb = teamBid(room, t);
+      if (tb) { bids[t] = tb.num; blind[t] = !!tb.blind; }
+    }
+  } else {
+    G.summaryRows.forEach((r, i) => { bids[i] = r.bid; });
+  }
+  room.history.push({ hand: G.handNum, trump: G.trump, bids, blind, pts });
+}
+
 // ---------- what one seat may see ----------
 function viewFor(room, seat) {
   const E = room.E, G = E.Gref();
@@ -136,6 +164,10 @@ function viewFor(room, seat) {
     blindQueue: G.blindQueue || [], blind: G.blind, eligible: G.eligible||[],
     pendingChoice: G.pendingChoice,
     handCounts: hands.map(h => h ? h.length : 0),
+    history: room.history || [],
+    cur: (() => { const a = teamBid(room,0), b = teamBid(room,1);
+      return { hand: G.handNum || 0, trump: G.trump,
+        bids: [a ? a.num : null, b ? b.num : null], blind: [!!(a && a.blind), !!(b && b.blind)] }; })(),
     summaryRows: G.phase==='summary' ? G.summaryRows : null,
     summaryThrown: G.summaryThrown,
     winner: G.winner || null,
@@ -246,7 +278,7 @@ const server = http.createServer(async (req, res) => {
       const i = seatByToken(room, b.token);
       if (i < 0) continue;
       const E = room.E, G = E.Gref();
-      const reply = (ok, err) => { advanceRoom(room); broadcast(room); json(res, ok?200:400, ok?{ok:true}:{error:err||'illegal'}); };
+      const reply = (ok, err) => { advanceRoom(room); recordHistory(room); broadcast(room); json(res, ok?200:400, ok?{ok:true}:{error:err||'illegal'}); };
       if (b.type === 'bid' && G.phase==='bidding' && E.bidderSeat()===i) {
         const num = Math.max(1, Math.min(13, parseInt(b.num,10)||1));
         E.submitBid(i, num, !!b.push && E.pushEligible(i), !!b.forme && E.formeEligible2(i));
