@@ -66,6 +66,10 @@
   .pile.top{ top:0; left:50%; transform:translateX(-50%); }
   .pile.left{ left:0; top:50%; transform:translateY(-50%); }
   .pile.right{ right:0; top:50%; transform:translateY(-50%); }
+  .pile.br{ right:8px; bottom:8px; }
+  .pile.tl{ left:8px; top:8px; }
+  .pile.tap{ cursor:pointer; }
+  .pile.tap:hover .minicard{ border-color:#ffd76a; }
   .pilebox{ position:relative; margin:0 auto; }
   .minicard{ position:absolute; width:22px; height:32px; background:#1a4530; border:1.5px solid var(--gold); border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,.45); }
   .pslot{ position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; max-width:44%; }
@@ -104,7 +108,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v15'; // bump on every reupload — shown on screen
+const VERSION = 'v16'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -310,8 +314,8 @@ function blindArea(){
   const mine = sideSeats.includes(V.yourSeat);
   const whoTxt = V.mode==='partners' ? (sd===0?'Team A':'Team B') : (V.names[sd]||('seat '+(sd+1)));
   return `<div class="banner"><b>Blind offer</b> — ${esc(whoTxt)} is 100+ points behind.</div>
-    ${mine ? `<div class="center"><button class="btn gold" onclick="act('blind',{num:7})">Blind 7 (+140/−70)</button>
-      <button class="btn" onclick="act('blind',{num:10})">Blind 10 (+400/−100)</button>
+    ${mine ? `<div class="center"><button class="btn gold" onclick="act('blind',{num:7})">Blind 7</button>
+      <button class="btn" onclick="act('blind',{num:10})">Blind 10</button>
       <button class="btn" onclick="act('blind',{num:0})">Skip</button></div>`
       : `<div class="banner dim">Waiting for the blind decision…</div>`}`;
 }
@@ -361,31 +365,35 @@ function clockTable(){
       ? `<div class="tablecenter gold">🏆 ${nameOf(winner)} took trick ${V.trickNum}</div>`
       : '');
   // trick piles: face-down mini-cards, one per won trick, building stairs outside the table
-  const piles = pilesHTML();
+  const piles = (V.phase==='play' || V.phase==='trickwon') ? pilesHTML() : '';
   return `<div class="tablewrap"><div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}</div>${piles}</div>`;
 }
 
-// stair-building pile of face-down mini-cards (one per trick taken)
+// stair-building pile of face-down mini-cards (one per trick taken).
+// Tap a pile (while no card is in play) to reveal the last tricks — anonymous.
 function pileHTML(count, cls, label){
   if (!count) return '';
   const shown = Math.min(count, 8);
   let cards = '';
   for (let k = 0; k < shown; k++) cards += `<div class="minicard" style="left:${k*10}px;bottom:${k*13}px"></div>`;
-  return `<div class="pile ${cls}"><div class="pilebox" style="width:${10*shown+22}px;height:${13*shown+32}px">${cards}</div><div class="sm dim">${label}${count>1?' ×'+count:''}</div></div>`;
+  const clickable = cls.includes('tap');
+  return `<div class="pile ${cls}" ${clickable?`onclick="togglePeek()" title="Show last tricks"`:''}><div class="pilebox" style="width:${10*shown+22}px;height:${13*shown+32}px">${cards}</div><div class="sm dim">${label}</div></div>`;
 }
 
 function pilesHTML(){
   const tw = V.tricksWon || {};
   const c = k => tw[String(k)] || 0;
+  const canReveal = (V.trick||[]).length === 0;   // reveal available until a card is played
+  const tap = canReveal ? ' tap' : '';
   if (V.mode === 'partners') {
     const us = V.yourSeat % 2, them = 1 - us;
-    return pileHTML(c(us), 'bottom', 'Us') + pileHTML(c(them), 'right', 'Them');
+    return pileHTML(c(us), 'br'+tap, 'Us') + pileHTML(c(them), 'tl'+tap, 'Them');
   }
-  if (V.mode === 'heads') return pileHTML(c(V.yourSeat), 'bottom', 'You') + pileHTML(c((V.yourSeat+1)%2), 'top', 'Opp');
-  // cutthroat: each player's pile in the gutter beside their own seat
+  if (V.mode === 'heads') return pileHTML(c(V.yourSeat), 'br'+tap, 'You') + pileHTML(c((V.yourSeat+1)%2), 'tl'+tap, 'Opp');
+  // cutthroat: each player's pile beside their own seat
   const me = V.yourSeat, n = (V.names||[]).length;
   const map = n === 4 ? { [me]:'bottom', [(me+1)%4]:'left', [(me+2)%4]:'top', [(me+3)%4]:'right' } : { [me]:'bottom' };
-  return Object.keys(map).map(i => pileHTML(c(+i), map[i], nameOf(+i))).join('');
+  return Object.keys(map).map(i => pileHTML(c(+i), map[i]+tap, nameOf(+i))).join('');
 }
 
 function playArea(){
@@ -400,12 +408,10 @@ function playArea(){
   } else {
     msg = `<div class="banner dim">Waiting… <b>${nameOf(V.turn)}</b> to play.</div>`;
   }
-  const canPeek = V.phase === 'trickwon';
-  const peekBtn = `<div class="center" style="margin:8px 0">
-    <button class="btn" ${canPeek?'':'disabled title="Only during the review pause between tricks"'} onclick="togglePeek()">${peekOpen?'✖ Close peek':'🔎 Peek last tricks'}</button>
-  </div>`;
-  const peek = (peekOpen && canPeek) ? `<div class="panel slim" style="margin-bottom:10px"><h3>Last tricks <span class="sm dim">(anonymous — cards only)</span></h3>${peekHTML()}</div>` : '';
-  return `${peek}${peekBtn}${msg}
+  const canReveal = (V.trick||[]).length === 0;   // reveal available until a card is played
+  if (peekOpen && !canReveal) peekOpen = false;   // auto-close once a card hits the table
+  const peek = (peekOpen && canReveal) ? `<div class="panel slim" style="margin-bottom:10px"><h3>Last 2 tricks <span class="sm dim">(anonymous — cards only, tap a pile to close)</span></h3>${peekHTML()}</div>` : '';
+  return `${peek}${msg}
     <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
 }
 
