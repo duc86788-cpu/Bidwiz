@@ -51,8 +51,15 @@
 <script>
 window.onerror = function(msg){
   try {
-    document.getElementById('app').innerHTML =
-      '<div class="panel"><h1>⚠️ Startup problem</h1><p class="sm" style="margin-top:8px;word-break:break-all">' + String(msg) + '</p><p class="sm dim" style="margin-top:8px">Screenshot this and send it to BabyBot.</p></div>';
+    const app = document.getElementById('app');
+    // keep the game visible; show the problem as a slim banner at the top
+    const panel = document.querySelector('.panel');
+    const banner = document.createElement('div');
+    banner.className = 'banner';
+    banner.style.borderColor = '#a33';
+    banner.innerHTML = '<b>⚠️ Problem:</b> ' + String(msg) + ' <span class="sm dim">(screenshot this and send it to BabyBot)</span>';
+    if (panel) panel.prepend(banner);
+    else app.innerHTML = '<div class="panel"><h1>⚠️ Startup problem</h1><p class="sm" style="margin-top:8px;word-break:break-all">' + String(msg) + '</p><p class="sm dim" style="margin-top:8px">Screenshot this and send it to BabyBot.</p></div>';
   } catch(e) {}
 };
 </script>
@@ -132,6 +139,8 @@ function listen(){
 }
 
 function act(type, extra){ api('/api/action', { token: TOK, type, ...extra }); }
+// card taps call play(suit, rank) — sends your move to the server
+async function play(suit, rank){ await act('play', { suit, rank }); }
 
 // ---------- render ----------
 function render(){
@@ -187,13 +196,18 @@ function tableHTML(){
   let h = `<div class="panel">
     <div class="scorebar"><span>Room <b class="gold">${V.code}</b> · Hand <b>${V.handNum}</b> · Trump ${trumpTxt()} · ${V.mode}</span><span>${scorebar()}</span></div>
     ${seatRow()}`;
-  if (V.phase === 'bidding') h += bidArea();
-  else if (V.phase === 'blind') h += blindArea();
-  else if (V.phase === 'throwchoice') h += throwArea();
+  if (V.phase === 'bidding') h += bidArea() + handRow();
+  else if (V.phase === 'blind') h += blindArea() + handRow();
+  else if (V.phase === 'throwchoice') h += throwArea() + handRow();
   else if (V.phase === 'play' || V.phase === 'trickwon') h += playArea();
   else if (V.phase === 'summary') h += summaryArea();
   h += `<div class="log">${(V.log||[]).map(l=>esc(l)).join('<br>')}</div></div>`;
   return h;
+}
+
+// your cards, face up, no clicking (used in bidding/blind/throw phases)
+function handRow(){
+  return `<h3>Your cards</h3><div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, null)).join('')}</div>`;
 }
 
 function bidArea(){
@@ -235,13 +249,14 @@ function throwArea(){
 function playArea(){
   const legalSet = new Set((V.legal||[]).map(c=>c.s+c.r));
   const myTurn = V.phase==='play' && V.turn===V.yourSeat;
+  const nameOf = i => esc((V.names||[])[i] || 'Player ' + ((i||0)+1));
   let trick = `<div class="trickzone">` + (V.trick||[]).map(p =>
-      `<div class="tslot">${cardHTML(p.card, null, null)}<div>${esc(V.names[p.seat])}</div></div>`).join('') + `</div>`;
+      `<div class="tslot">${cardHTML(p.card, null, null)}<div>${nameOf(p.seat)}</div></div>`).join('') + `</div>`;
   let msg;
   if (myTurn) msg = `<div class="banner"><b>Your turn</b> — play a highlighted card.</div>`;
-  else msg = `<div class="banner dim">Waiting… <b>${esc(V.names[V.turn]||'')}</b> to play.</div>`;
+  else msg = `<div class="banner dim">Waiting… <b>${nameOf(V.turn)}</b> to play.</div>`;
   return `<h3>${V.phase==='trickwon' ? 'Trick ' + V.trickNum + ' won' : 'Trick ' + ((V.trickNum||0)+1)}</h3>${trick}${msg}
-    <div class="hand">${V.yourHand.map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
+    <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
 }
 
 function summaryArea(){
@@ -261,7 +276,7 @@ function overHTML(){
   </div>`;
 }
 
-window.act = act; window.createTable = createTable; window.joinTable = joinTable; window.startGame = startGame;
+window.act = act; window.createTable = createTable; window.joinTable = joinTable; window.startGame = startGame; window.play = play;
 
 if (TOK && CODE) {
   // try to resume an existing session
