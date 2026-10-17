@@ -71,10 +71,12 @@
   .peekcards{ display:flex; gap:6px; flex-wrap:wrap; }
   .bidchip{ display:inline-block; background:#234d36; border:1px solid var(--gold); border-radius:12px; padding:3px 10px; font-size:13.5px; font-weight:bold; }
   .bidchip.dim{ background:transparent; border-color:var(--line); color:var(--dim); font-weight:normal; }
+  .dealer-tag{ display:inline-block; background:var(--gold); color:#1c1305; border-radius:7px; padding:1px 7px; font-size:10.5px; font-weight:bold; letter-spacing:1px; }
 </style>
 </head>
 <body>
 <div id="app"><div class="panel"><h1 class="center">🂡 BidWiz</h1><p class="dim center" style="margin-top:10px">Loading… If this message stays visible, something is blocked — tell BabyBot what you see.</p></div></div>
+<div id="toast" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#3a1f1f;border:1px solid #a33;color:#f88;padding:10px 16px;border-radius:10px;font-size:14px;z-index:99;max-width:90vw"></div>
 <script>
 window.onerror = function(msg){
   try {
@@ -166,7 +168,12 @@ function listen(){
   es.onerror = () => { setTimeout(()=>{ if(TOK) listen(); }, 1500); };
 }
 
-function act(type, extra){ api('/api/action', { token: TOK, type, ...extra }); }
+function act(type, extra){ api('/api/action', { token: TOK, type, ...extra }).then(r => { if (r && r.error) toast('⚠ ' + r.error + ' — the table moved on; check whose turn it is'); }).catch(()=>{}); }
+function toast(msg){
+  const t = $('toast'); if (!t) return;
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
 // card taps call play(suit, rank) — sends your move to the server
 async function play(suit, rank){ await act('play', { suit, rank }); }
 function togglePeek(){ peekOpen = !peekOpen; render(); }
@@ -260,7 +267,7 @@ function scoreTableHTML(){
      <td><div class="diag"><span class="bl">${bidTxt(r.b[us], r.bl[us])}</span><span class="br">${bidTxt(r.b[them], r.bl[them])}</span></div></td>
      <td>${r.p ? r.p[them] : '—'}</td></tr>`).join('');
   return `<table class="scoretable">
-    <tr><th>Trumps</th><th>Us</th><th>Bids</th><th>Them</th></tr>${body || '<tr><td colspan="4" class="dim">—</td></tr>'}</table>
+    <tr><th>Trump</th><th>Us</th><th>Bids</th><th>Them</th></tr>${body || '<tr><td colspan="4" class="dim">—</td></tr>'}</table>
     <p class="sm dim center">B = blind bid · Us = you + partner</p>`;
 }
 
@@ -332,16 +339,16 @@ function clockTable(){
     const card = played[i];
     const tricks = (V.tricksWon||{})[String(V.mode==='partners' ? i%2 : i)] || 0;
     return `<div class="pslot ${pos[i]}">
-      <div class="plabel">${activeTurn?'<span class="turn-tag">●</span> ':''}<span class="dot ${dot}"></span>${nameOf(i)}${V.mode==='partners'?` <span class="sm">· ${tricks}</span>`:''}</div>
+      <div class="plabel">${activeTurn?'<span class="turn-tag">●</span> ':''}<span class="dot ${dot}"></span>${nameOf(i)}${V.mode==='partners'?` <span class="sm">· ${tricks}</span>`:''}${i===V.dealer?' <span class="dealer-tag">DEALER</span>':''}</div>
       ${biddingLike ? bidChip(i) : (card ? cardHTML(card, null, null) : '<div class="card empty"></div>')}
     </div>`;
   };
   const dealerName = nameOf(V.dealer);
   const center = biddingLike
-    ? `<div class="tablecenter dim sm">Bidding<br>Trump ${trumpTxt()} · dealer ${dealerName}</div>`
+    ? `<div class="tablecenter dim sm">Bidding</div>`
     : (V.phase==='trickwon' && winner>=0
       ? `<div class="tablecenter gold">🏆 ${nameOf(winner)} took trick ${V.trickNum}</div>`
-      : `<div class="tablecenter dim sm">Trump ${trumpTxt()}<br>Trick ${(V.trickNum||0)+1}</div>`);
+      : '');
   return `<div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}</div>`;
 }
 
