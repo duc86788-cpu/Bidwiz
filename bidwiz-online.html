@@ -44,6 +44,20 @@
   .summary td{ padding:5px 16px; border-bottom:1px solid var(--line); }
   .red-suit{ color:#b11; }
   .banner{ background:#0f2b1d; border:1px solid var(--gold); border-radius:9px; padding:9px 14px; margin:10px 0; text-align:center; }
+  .layout{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+  .panel.slim{ padding:12px; }
+  .col.left{ flex:0 0 240px; order:1; } .col.main{ flex:1 1 430px; order:2; min-width:300px; } .col.side{ flex:0 0 270px; order:3; }
+  @media(max-width:899px){ .col.left{ order:3; } }
+  .scoretable{ width:100%; border-collapse:collapse; font-size:14px; }
+  .scoretable th{ color:var(--gold); border-bottom:1px solid var(--line); padding:5px 4px; font-size:12.5px; text-align:center; }
+  .scoretable td{ border-bottom:1px solid var(--line); padding:4px 4px; text-align:center; font-size:15px; }
+  .diag{ width:56px; height:36px; position:relative; margin:0 auto;
+    background:linear-gradient(to bottom right, transparent 48.6%, var(--line) 48.6%, var(--line) 51.4%, transparent 51.4%); }
+  .diag .bl{ position:absolute; top:0; left:3px; font-weight:bold; }
+  .diag .br{ position:absolute; bottom:0; right:3px; font-weight:bold; color:var(--gold); }
+  .trickzone{ min-height:190px; gap:20px; }
+  .tslot .card{ width:68px; height:96px; font-size:26px; cursor:default; }
+  .tslot .card .s{ font-size:30px; }
 </style>
 </head>
 <body>
@@ -193,16 +207,45 @@ function trumpTxt(){ return V.trump==='NT' ? 'No Trump' : `<span class="${REDS.h
 
 function tableHTML(){
   if (V.phase === 'over') return overHTML();
-  let h = `<div class="panel">
-    <div class="scorebar"><span>Room <b class="gold">${V.code}</b> · Hand <b>${V.handNum}</b> · Trump ${trumpTxt()} · ${V.mode}</span><span>${scorebar()}</span></div>
-    ${seatRow()}`;
-  if (V.phase === 'bidding') h += bidArea() + handRow();
-  else if (V.phase === 'blind') h += blindArea() + handRow();
-  else if (V.phase === 'throwchoice') h += throwArea() + handRow();
-  else if (V.phase === 'play' || V.phase === 'trickwon') h += playArea();
-  else if (V.phase === 'summary') h += summaryArea();
-  h += `<div class="log">${(V.log||[]).map(l=>esc(l)).join('<br>')}</div></div>`;
-  return h;
+  const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · Hand <b>${V.handNum}</b> · Trump ${trumpTxt()} · ${V.mode}</span><span>${scorebar()}</span></div>
+    ${seatRow()}` + phaseArea();
+  if (V.mode === 'partners') {
+    return `<div class="layout">
+      <div class="col left"><div class="panel slim"><h3>Hand log</h3>${logHTML()}</div></div>
+      <div class="col main"><div class="panel">${board}</div></div>
+      <div class="col side"><div class="panel slim"><h3>Scoreboard</h3>${scoreTableHTML()}</div></div>
+    </div>`;
+  }
+  return `<div class="panel">${board}<div class="log">${(V.log||[]).map(l=>esc(l)).join('<br>')}</div></div>`;
+}
+
+function phaseArea(){
+  if (V.phase === 'bidding') return bidArea() + handRow();
+  if (V.phase === 'blind') return blindArea() + handRow();
+  if (V.phase === 'throwchoice') return throwArea() + handRow();
+  if (V.phase === 'play' || V.phase === 'trickwon') return playArea();
+  if (V.phase === 'summary') return summaryArea();
+  return '';
+}
+
+function logHTML(){
+  return `<div class="log" style="max-height:480px;overflow:auto">${(V.log||[]).map(l=>esc(l)).join('<br>')}</div>`;
+}
+
+// right-column scoreboard: one row per hand — trump, our points, diagonal bids, their points
+function scoreTableHTML(){
+  const us = V.yourSeat % 2, them = 1 - us;   // partners: Team A = seats 0,2 → team 0
+  const sym = t => t === 'NT' ? 'NT' : `<span class="${REDS.has(t)?'red-suit':''}">${SUITC[t]||''}</span>`;
+  const bidTxt = (n, isBlind) => (n === null || n === undefined) ? '' : (isBlind ? 'B' + n : String(n));
+  const rows = (V.history || []).map(h => ({ t: h.trump, b: h.bids, bl: h.blind || [false,false,false,false], p: h.pts }));
+  if (V.cur && V.phase !== 'summary') rows.push({ t: V.cur.trump, b: V.cur.bids, bl: V.cur.blind, p: null });
+  const body = rows.map(r =>
+    `<tr><td>${sym(r.t)}</td><td>${r.p ? r.p[us] : '—'}</td>
+     <td><div class="diag"><span class="bl">${bidTxt(r.b[us], r.bl[us])}</span><span class="br">${bidTxt(r.b[them], r.bl[them])}</span></div></td>
+     <td>${r.p ? r.p[them] : '—'}</td></tr>`).join('');
+  return `<table class="scoretable">
+    <tr><th>Trumps</th><th>Us</th><th>Bids</th><th>Them</th></tr>${body || '<tr><td colspan="4" class="dim">—</td></tr>'}</table>
+    <p class="sm dim center">B = blind bid · Us = you + partner</p>`;
 }
 
 // your cards, face up, no clicking (used in bidding/blind/throw phases)
