@@ -69,6 +69,8 @@
   .tablecenter{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; font-size:15px; pointer-events:none; }
   .peekrow{ margin:6px 0; }
   .peekcards{ display:flex; gap:6px; flex-wrap:wrap; }
+  .bidchip{ display:inline-block; background:#234d36; border:1px solid var(--gold); border-radius:12px; padding:3px 10px; font-size:13.5px; font-weight:bold; }
+  .bidchip.dim{ background:transparent; border-color:var(--line); color:var(--dim); font-weight:normal; }
 </style>
 </head>
 <body>
@@ -220,8 +222,9 @@ function trumpTxt(){ return V.trump==='NT' ? 'No Trump' : `<span class="${REDS.h
 
 function tableHTML(){
   if (V.phase === 'over') return overHTML();
+  const showClock = ['bidding','blind','throwchoice','play','trickwon'].includes(V.phase);
   const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · Hand <b>${V.handNum}</b> · Trump ${trumpTxt()} · ${V.mode}</span><span>${scorebar()}</span></div>
-    ${(V.phase==='play'||V.phase==='trickwon') ? '' : seatRow()}` + phaseArea();
+    ${showClock ? clockTable() : seatRow()}` + phaseArea();
   if (V.mode === 'partners') {
     return `<div class="layout">
       <div class="col left"><div class="panel slim"><h3>Hand log</h3>${logHTML()}</div></div>
@@ -303,7 +306,9 @@ function throwArea(){
       : `<div class="banner dim">⏳ Waiting for the bigger-bid side (${esc((V.names||[]).find((n,i)=>(V.mode==='partners'? i%2 : i)===V.pendingChoice.who)||'other team')}) to decide…</div>`}`;
 }
 
-// clock-face table: you at 6 o'clock, partner 12, opponents 9 and 3; card appears in front of each player
+// clock-face table: you at 6 o'clock, partner 12, opponents 9 and 3.
+// During play: each played card appears in front of its player.
+// During bidding/blind/throw: each player's bid appears at their seat instead.
 function clockTable(){
   const me = V.yourSeat, n = (V.names||[]).length;
   const pos = {};
@@ -312,20 +317,31 @@ function clockTable(){
   else { for (let i=0;i<n;i++) pos[i] = 'top'; pos[me] = 'bottom'; }
   const nameOf = i => esc((V.names||[])[i] || 'Player ' + ((i||0)+1));
   const played = {}; (V.trick||[]).forEach(p => played[p.seat] = p.card);
+  const biddingLike = V.phase==='bidding' || V.phase==='blind' || V.phase==='throwchoice';
   const winner = (V.lastWin !== null && V.lastWin !== undefined) ? V.lastWin : -1;
+  const bidChip = i => {
+    const b = (V.bids||[])[i];
+    if (V.blind && (V.mode==='partners' ? i%2 : i) === V.blind.side) return '<span class="bidchip">🂠 Blind ' + V.blind.num + '</span>';
+    if (b) return b.forme ? '<span class="bidchip">🤐 bid for me</span>'
+      : '<span class="bidchip">bid ' + b.num + (b.push ? ' +push' : '') + '</span>';
+    return '<span class="bidchip dim">· waiting</span>';
+  };
   const slot = i => {
     const dot = V.robots[i] ? 'bot' : (V.connected[i] ? 'on' : 'off');
-    const isTurn = (V.phase==='play' || V.phase==='trickwon') && V.turn===i;
+    const activeTurn = (V.phase==='play' || V.phase==='trickwon') ? V.turn===i : (V.phase==='bidding' && V.bidTurn===i);
     const card = played[i];
     const tricks = (V.tricksWon||{})[String(V.mode==='partners' ? i%2 : i)] || 0;
     return `<div class="pslot ${pos[i]}">
-      <div class="plabel">${isTurn?'<span class="turn-tag">●</span> ':''}<span class="dot ${dot}"></span>${nameOf(i)}${V.mode==='partners'?` <span class="sm">· ${tricks}</span>`:''}</div>
-      ${card ? cardHTML(card, null, null) : '<div class="card empty"></div>'}
+      <div class="plabel">${activeTurn?'<span class="turn-tag">●</span> ':''}<span class="dot ${dot}"></span>${nameOf(i)}${V.mode==='partners'?` <span class="sm">· ${tricks}</span>`:''}</div>
+      ${biddingLike ? bidChip(i) : (card ? cardHTML(card, null, null) : '<div class="card empty"></div>')}
     </div>`;
   };
-  const center = V.phase==='trickwon' && winner>=0
-    ? `<div class="tablecenter gold">🏆 ${nameOf(winner)} took trick ${V.trickNum}</div>`
-    : `<div class="tablecenter dim sm">Trump ${trumpTxt()}<br>Trick ${(V.trickNum||0)+1}</div>`;
+  const dealerName = nameOf(V.dealer);
+  const center = biddingLike
+    ? `<div class="tablecenter dim sm">Bidding<br>Trump ${trumpTxt()} · dealer ${dealerName}</div>`
+    : (V.phase==='trickwon' && winner>=0
+      ? `<div class="tablecenter gold">🏆 ${nameOf(winner)} took trick ${V.trickNum}</div>`
+      : `<div class="tablecenter dim sm">Trump ${trumpTxt()}<br>Trick ${(V.trickNum||0)+1}</div>`);
   return `<div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}</div>`;
 }
 
