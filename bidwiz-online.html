@@ -250,13 +250,33 @@ function playArea(){
   const legalSet = new Set((V.legal||[]).map(c=>c.s+c.r));
   const myTurn = V.phase==='play' && V.turn===V.yourSeat;
   const nameOf = i => esc((V.names||[])[i] || 'Player ' + ((i||0)+1));
+  const winner = (V.lastWin !== null && V.lastWin !== undefined) ? V.lastWin : -1;
+  // highlight the winning card while the finished trick is on the table
   let trick = `<div class="trickzone">` + (V.trick||[]).map(p =>
-      `<div class="tslot">${cardHTML(p.card, null, null)}<div>${nameOf(p.seat)}</div></div>`).join('') + `</div>`;
+      `<div class="tslot">${cardHTML(p.card, null, null)}<div style="${p.seat===winner?'color:var(--gold);font-weight:bold':''}">${p.seat===winner?'🏆 ':''}${nameOf(p.seat)}</div></div>`).join('') + `</div>`;
   let msg;
-  if (myTurn) msg = `<div class="banner"><b>Your turn</b> — play a highlighted card.</div>`;
-  else msg = `<div class="banner dim">Waiting… <b>${nameOf(V.turn)}</b> to play.</div>`;
-  return `<h3>${V.phase==='trickwon' ? 'Trick ' + V.trickNum + ' won' : 'Trick ' + ((V.trickNum||0)+1)}</h3>${trick}${msg}
+  if (V.phase === 'trickwon' && winner >= 0) {
+    msg = `<div class="banner"><b>🏆 ${nameOf(winner)} took trick ${V.trickNum}.</b></div>`;
+  } else if (myTurn) {
+    msg = `<div class="banner"><b>Your turn</b> — play a highlighted card.</div>`;
+  } else {
+    msg = `<div class="banner dim">Waiting… <b>${nameOf(V.turn)}</b> to play.</div>`;
+  }
+  // recap of the previous trick while the next one is open
+  const recap = (V.phase === 'play' && winner >= 0 && (V.trick||[]).length === 0)
+    ? `<div class="bidsheet center">Last trick: ${nameOf(winner)} took it. Tricks so far — ${tricksTxt()}</div>` : '';
+  return `<h3>${V.phase==='trickwon' ? 'Trick ' + V.trickNum + ' won' : 'Trick ' + ((V.trickNum||0)+1)}</h3>${trick}${recap}${msg}
     <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
+}
+
+function tricksTxt(){
+  const tw = V.tricksWon || {};
+  const parts = [];
+  for (const k of Object.keys(tw).sort()) {
+    const who = V.mode === 'partners' ? (k === '0' ? 'Team A' : 'Team B') : nameOf(parseInt(k,10));
+    parts.push(`${who} ${tw[k]}`);
+  }
+  return parts.length ? parts.join(' · ') : 'none yet';
 }
 
 function summaryArea(){
