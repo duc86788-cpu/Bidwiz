@@ -108,7 +108,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v16'; // bump on every reupload — shown on screen
+const VERSION = 'v17'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -270,19 +270,33 @@ function logHTML(){
   return `<div class="log" style="max-height:480px;overflow:auto">${(V.log||[]).map(l=>esc(l)).join('<br>')}</div>`;
 }
 
-// right-column scoreboard: one row per hand — trump, our points, diagonal bids, their points
+// right-column scoreboard, scorepad style: pre-printed trump rows, numbers fill in as hands progress
 function scoreTableHTML(){
   const us = V.yourSeat % 2, them = 1 - us;   // partners: Team A = seats 0,2 → team 0
-  const sym = t => t === 'NT' ? 'NT' : `<span class="${REDS.has(t)?'red-suit':''}">${SUITC[t]||''}</span>`;
+  const CYCLE = ['H','S','D','C','NT'];       // hand 1 ♥, 2 ♠, 3 ♦, 4 ♣, 5 NT, repeat
+  const sym = (t, future) => t === 'NT' ? '<span class="dim">NT</span>'
+    : `<span class="${REDS.has(t)?'red-suit':''}" ${future?'style="opacity:.45"':''}>${SUITC[t]||''}</span>`;
   const bidTxt = (n, isBlind) => (n === null || n === undefined) ? '' : (isBlind ? 'B' + n : String(n));
-  const rows = (V.history || []).map(h => ({ t: h.trump, b: h.bids, bl: h.blind || [false,false,false,false], p: h.pts }));
-  if (V.cur && V.phase !== 'summary') rows.push({ t: V.cur.trump, b: V.cur.bids, bl: V.cur.blind, p: null });
-  const body = rows.map(r =>
-    `<tr><td>${sym(r.t)}</td><td>${r.p ? r.p[us] : '—'}</td>
-     <td><div class="diag"><span class="bl">${bidTxt(r.b[us], r.bl[us])}</span><span class="br">${bidTxt(r.b[them], r.bl[them])}</span></div></td>
-     <td>${r.p ? r.p[them] : '—'}</td></tr>`).join('');
+  const hist = {};
+  (V.history || []).forEach(h => { hist[h.hand] = h; });
+  const total = Math.max(5, (V.handNum || 0) + 1);   // full cycle minimum, grows as hands progress
+  const body = [];
+  for (let h = 1; h <= total; h++) {
+    const t = CYCLE[(h - 1) % 5];
+    const done = hist[h];
+    const cur = (h === V.handNum && V.cur) ? V.cur : null;
+    const b = done ? done.bids : (cur ? cur.bids : [null, null]);
+    const bl = done ? (done.blind || []) : (cur ? cur.blind : [false, false]);
+    const p = done ? done.pts : null;
+    const usPts = p ? p[us] : (done ? '—' : (cur ? '—' : ''));
+    const themPts = p ? p[them] : (done ? '—' : (cur ? '—' : ''));
+    const future = !done && !cur;
+    body.push(`<tr><td>${sym(t, future)}</td><td>${usPts}</td>
+     <td><div class="diag" ${future?'style="opacity:.35"':''}><span class="bl">${bidTxt(b[us], bl[us])}</span><span class="br">${bidTxt(b[them], bl[them])}</span></div></td>
+     <td>${themPts}</td></tr>`);
+  }
   return `<table class="scoretable">
-    <tr><th>Trump</th><th>Us</th><th>Bids</th><th>Them</th></tr>${body || '<tr><td colspan="4" class="dim">—</td></tr>'}</table>
+    <tr><th>Trump</th><th>Us</th><th>Bids</th><th>Them</th></tr>${body.join('')}</table>
     <p class="sm dim center">B = blind bid · Us = you + partner</p>`;
 }
 

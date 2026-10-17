@@ -98,7 +98,7 @@ function advanceRoom(room, forceResume) {
       if (!room.trickPause) {
         room.trickPause = setTimeout(() => {
           room.trickPause = null;
-          if (room.E.Gref().phase === 'trickwon') { advanceRoom(room, true); broadcast(room); }
+          if (room.E.Gref().phase === 'trickwon') { advanceRoom(room, true); recordHistory(room); broadcast(room); }
         }, 2000);
       }
       return;
