@@ -59,6 +59,15 @@
   .tslot .card{ width:68px; height:96px; font-size:26px; cursor:default; }
   .tslot .card .s{ font-size:30px; }
   .table{ position:relative; width:min(90vw,470px); aspect-ratio:1/1; margin:10px auto; background:#0f2b1d; border:2px solid var(--line); border-radius:18px; }
+  .tablewrap{ position:relative; width:min(90vw,470px); margin:14px auto; padding:44px 74px; }
+  .tablewrap .table{ width:100%; margin:0; }
+  .pile{ position:absolute; text-align:center; }
+  .pile.bottom{ bottom:0; left:50%; transform:translateX(-50%); }
+  .pile.top{ top:0; left:50%; transform:translateX(-50%); }
+  .pile.left{ left:0; top:50%; transform:translateY(-50%); }
+  .pile.right{ right:0; top:50%; transform:translateY(-50%); }
+  .pilebox{ position:relative; margin:0 auto; }
+  .minicard{ position:absolute; width:22px; height:32px; background:#1a4530; border:1.5px solid var(--gold); border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,.45); }
   .pslot{ position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; max-width:44%; }
   .pslot.bottom{ bottom:10px; left:50%; transform:translateX(-50%); }
   .pslot.top{ top:10px; left:50%; transform:translateX(-50%); }
@@ -95,6 +104,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
+const VERSION = 'v15'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -138,6 +148,7 @@ function lobbyHTML(){
     <button class="btn gold" onclick="joinTable()">Join</button>
     <p class="sm dim" style="margin-top:14px">Empty seats are played by robot AI until a friend takes them.
     If you leave, your seat keeps playing as a robot until you come back.</p>
+    <p class="sm dim center" style="margin-top:8px">BidWiz ${VERSION}</p>
   </div>`;
 }
 
@@ -234,7 +245,7 @@ function tableHTML(){
     ${showClock ? clockTable() : seatRow()}` + phaseArea();
   if (V.mode === 'partners') {
     return `<div class="layout">
-      <div class="col left"><div class="panel slim"><h3>Hand log</h3>${logHTML()}</div></div>
+      <div class="col left"><div class="panel slim"><h3>Hand log</h3>${logHTML()}<p class="sm dim center" style="margin-top:6px">BidWiz ${VERSION}</p></div></div>
       <div class="col main"><div class="panel">${board}</div></div>
       <div class="col side"><div class="panel slim"><h3>Scoreboard</h3>${scoreTableHTML()}</div></div>
     </div>`;
@@ -349,7 +360,32 @@ function clockTable(){
     : (V.phase==='trickwon' && winner>=0
       ? `<div class="tablecenter gold">🏆 ${nameOf(winner)} took trick ${V.trickNum}</div>`
       : '');
-  return `<div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}</div>`;
+  // trick piles: face-down mini-cards, one per won trick, building stairs outside the table
+  const piles = pilesHTML();
+  return `<div class="tablewrap"><div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}</div>${piles}</div>`;
+}
+
+// stair-building pile of face-down mini-cards (one per trick taken)
+function pileHTML(count, cls, label){
+  if (!count) return '';
+  const shown = Math.min(count, 8);
+  let cards = '';
+  for (let k = 0; k < shown; k++) cards += `<div class="minicard" style="left:${k*10}px;bottom:${k*13}px"></div>`;
+  return `<div class="pile ${cls}"><div class="pilebox" style="width:${10*shown+22}px;height:${13*shown+32}px">${cards}</div><div class="sm dim">${label}${count>1?' ×'+count:''}</div></div>`;
+}
+
+function pilesHTML(){
+  const tw = V.tricksWon || {};
+  const c = k => tw[String(k)] || 0;
+  if (V.mode === 'partners') {
+    const us = V.yourSeat % 2, them = 1 - us;
+    return pileHTML(c(us), 'bottom', 'Us') + pileHTML(c(them), 'right', 'Them');
+  }
+  if (V.mode === 'heads') return pileHTML(c(V.yourSeat), 'bottom', 'You') + pileHTML(c((V.yourSeat+1)%2), 'top', 'Opp');
+  // cutthroat: each player's pile in the gutter beside their own seat
+  const me = V.yourSeat, n = (V.names||[]).length;
+  const map = n === 4 ? { [me]:'bottom', [(me+1)%4]:'left', [(me+2)%4]:'top', [(me+3)%4]:'right' } : { [me]:'bottom' };
+  return Object.keys(map).map(i => pileHTML(c(+i), map[i], nameOf(+i))).join('');
 }
 
 function playArea(){
@@ -369,7 +405,7 @@ function playArea(){
     <button class="btn" ${canPeek?'':'disabled title="Only during the review pause between tricks"'} onclick="togglePeek()">${peekOpen?'✖ Close peek':'🔎 Peek last tricks'}</button>
   </div>`;
   const peek = (peekOpen && canPeek) ? `<div class="panel slim" style="margin-bottom:10px"><h3>Last tricks <span class="sm dim">(anonymous — cards only)</span></h3>${peekHTML()}</div>` : '';
-  return `${peek}${clockTable()}${peekBtn}${msg}
+  return `${peek}${peekBtn}${msg}
     <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
 }
 

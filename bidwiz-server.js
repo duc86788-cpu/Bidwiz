@@ -93,13 +93,13 @@ function advanceRoom(room, forceResume) {
       E.playCard(G.turn, E.aiPlay(G.turn)); continue;
     }
     if (G.phase === 'trickwon') {
-      // 5-second review pause before the next trick (peek window)
+      // 2-second review pause before the next trick (peek window)
       if (forceResume) { E.nextAfterTrick(G.lastWin); continue; }
       if (!room.trickPause) {
         room.trickPause = setTimeout(() => {
           room.trickPause = null;
           if (room.E.Gref().phase === 'trickwon') { advanceRoom(room, true); broadcast(room); }
-        }, 5000);
+        }, 2000);
       }
       return;
     }
