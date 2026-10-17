@@ -170,6 +170,7 @@ function startHand(){
   G.bids = []; for(let i=0;i<G.n;i++) G.bids.push(null);
   G.blind=null; G.trick=[]; G.trickNum=0; G.tricksWon={}; G.lastWin=null; G.throwin=false;
   G.teamOpeners={}; G.formeTeam={};
+  G.leadHistory={}; G.sluffHistory={};   // partnership memory: partner's leads & first sluffs
   const order=[]; for(let k=1;k<=G.n;k++) order.push((G.dealerIdx+k)%G.n);
   G.bidOrder=order; G.bidPos=0;
   // blind eligibility: 100+ behind
@@ -305,6 +306,12 @@ function playCard(i, card){
   if(idx<0) return;
   const legal=legalCards(i);
   if(!legal.some(c=>c.s===card.s&&c.r===card.r)) return;
+  // partnership memory: leads and first sluffs (discards), per seat
+  G.leadHistory = G.leadHistory || {}; G.sluffHistory = G.sluffHistory || {};
+  const wasLead = G.trick.length===0;
+  const ledSuit = wasLead ? null : G.trick[0].card.s;
+  if(wasLead) G.leadHistory[i] = card.s;
+  else if(card.s!==ledSuit && card.s!==G.trump && !G.sluffHistory[i]) G.sluffHistory[i] = card.s;
   h.splice(idx,1);
   G.trick.push({seat:i, card});
   logLine(`${G.names[i]} plays ${rankChar(card.r)}${SUIT_CHAR[card.s]}.`);
@@ -429,11 +436,32 @@ function aiPlay(i){
 
   // leading
   if(!led){
-    // prefer a suit where I hold the boss card (highest remaining likely winner)
+    const partner = G.teamMode ? (i+2)%G.n : null;
+    const pLead = partner!==null ? (G.leadHistory||{})[partner] : null;
+    const pSluff = partner!==null ? (G.sluffHistory||{})[partner] : null;
+    const sd0 = sides().find(x=>x.id===mySide);
+    let eb=null; try { eb = sd0 ? effectiveBidOfSide(sd0) : null; } catch(e){}
+    const highBid = !!(eb && eb.num>=8);   // bid 8 or 10: play trump as a team
+    // 1) high bid: draw trumps with the top one
+    if(highBid && trump!=='NT'){
+      const t = bySuit(trump);
+      if(t.length) return t[0];
+    }
+    // 2) return partner's original lead — highest of that suit
+    if(pLead){
+      const mine=bySuit(pLead);
+      if(mine.length) return mine[0];
+    }
+    // 3) cash the boss ace
     for(const s of SUITS){
       if(trump!=='NT' && s===trump) continue;
       const mine=bySuit(s);
-      if(mine.length && mine[0].r===14) return mine[0]; // cash the ace
+      if(mine.length && mine[0].r===14) return mine[0];
+    }
+    // 4) lead back partner's first sluff (they showed a void there)
+    if(pSluff && pSluff!==trump){
+      const mine=bySuit(pSluff);
+      if(mine.length) return lowest(mine);
     }
     return lowest(legal); // otherwise lead low
   }
@@ -458,8 +486,11 @@ function aiPlay(i){
     const wouldWin=canWinNow(trumps[trumps.length-1]);
     const partnerWinning = curWin!==null && curWinSide===mySide;
     const blindRush = G.blind && G.blind.side===mySide;
-    if(wouldWin && !partnerWinning && (G.trick.length===G.n-1 || blindRush)){
-      // ruff only when it's the last seat or blind urgency
+    const sd0 = sides().find(x=>x.id===mySide);
+    let eb=null; try { eb = sd0 ? effectiveBidOfSide(sd0) : null; } catch(e){}
+    const highBid = !!(eb && eb.num>=8);   // bid 8 or 10: ruff in whenever it wins
+    if(wouldWin && !partnerWinning && (G.trick.length===G.n-1 || blindRush || highBid)){
+      // ruff when it's the last seat, blind urgency, or a high team bid
       return trumps[trumps.length-1]; // cheapest trump that wins
     }
   }
