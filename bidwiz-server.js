@@ -42,7 +42,7 @@ function tok() { return crypto.randomBytes(12).toString('hex'); }
 
 function createRoom(hostName, mode, push) {
   const code = randCode();
-  const room = { code, mode: mode||'partners', push: !!push, seats:[null,null,null,null], E: makeEngine(), started:false, order:0, history: [] };
+  const room = { code, mode: mode||'partners', push: !!push, seats:[null,null,null,null], E: makeEngine(), started:false, order:0, history: [], trickLog: [], trickPause: null };
   const t = tok();
   room.seats[0] = { name: clean(hostName)||'Host', token: t, robot:false };
   rooms.set(code, room);
@@ -65,7 +65,7 @@ function clean(s){ return String(s||'').replace(/[<>&"]/g,'').slice(0,16); }
 
 // ---------- drive the engine until a human seat must act ----------
 function isHuman(room, seat){ const s = room.seats[seat]; return !!(s && !s.robot); }
-function advanceRoom(room) {
+function advanceRoom(room, forceResume) {
   const E = room.E, G = E.Gref();
   let guard = 0;
   while (guard++ < 3000) {
@@ -92,7 +92,17 @@ function advanceRoom(room) {
       if (isHuman(room, G.turn)) return;
       E.playCard(G.turn, E.aiPlay(G.turn)); continue;
     }
-    if (G.phase === 'trickwon') { E.nextAfterTrick(G.lastWin); continue; }
+    if (G.phase === 'trickwon') {
+      // 5-second review pause before the next trick (peek window)
+      if (forceResume) { E.nextAfterTrick(G.lastWin); continue; }
+      if (!room.trickPause) {
+        room.trickPause = setTimeout(() => {
+          room.trickPause = null;
+          if (room.E.Gref().phase === 'trickwon') { advanceRoom(room, true); broadcast(room); }
+        }, 5000);
+      }
+      return;
+    }
     return;
   }
 }
@@ -159,6 +169,8 @@ function viewFor(room, seat) {
     tricksWon: G.tricksWon || {},
     bids: G.bids || [],                    // bids are public info
     bidOptions: myBid ? E.bidOptions(seat) : null,
+    bidTurn: G.phase === 'bidding' ? E.bidderSeat() : -1,
+    lastTricks: (room.trickLog || []).slice(-2),
     pushEligible: E.pushEligible(seat),
     formeEligible: E.formeEligible2(seat),
     blindQueue: G.blindQueue || [], blind: G.blind, eligible: G.eligible||[],
@@ -178,6 +190,13 @@ function viewFor(room, seat) {
 
 // ---------- SSE clients ----------
 function broadcast(room) {
+  // capture each completed trick (anonymous — cards only) for the peek feature
+  const G = room.E.Gref();
+  if (G && G.phase === 'trickwon' && G.trick && G.trick.length) {
+    const last = room.trickLog[room.trickLog.length - 1];
+    if (!last || last.n !== G.trickNum) room.trickLog.push({ n: G.trickNum, cards: G.trick.map(p => p.card) });
+    if (room.trickLog.length > 2) room.trickLog = room.trickLog.slice(-2);
+  }
   const payload = room.seats.map((s, i) => s ? JSON.stringify(viewFor(room, i)) : null);
   for (const s of room.seats) {
     if (s && s.res) {

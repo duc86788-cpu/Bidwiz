@@ -67,6 +67,8 @@
   .plabel{ font-size:12.5px; color:var(--txt); white-space:nowrap; }
   .card.empty{ background:transparent; border:1px dashed var(--line); width:56px; height:80px; }
   .tablecenter{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; font-size:15px; pointer-events:none; }
+  .peekrow{ margin:6px 0; }
+  .peekcards{ display:flex; gap:6px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -88,6 +90,7 @@ window.onerror = function(msg){
 </script>
 <script>
 let V = null;          // last server view
+let peekOpen = false;  // last-tricks review panel
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -164,6 +167,7 @@ function listen(){
 function act(type, extra){ api('/api/action', { token: TOK, type, ...extra }); }
 // card taps call play(suit, rank) — sends your move to the server
 async function play(suit, rank){ await act('play', { suit, rank }); }
+function togglePeek(){ peekOpen = !peekOpen; render(); }
 
 // ---------- render ----------
 function render(){
@@ -331,16 +335,26 @@ function playArea(){
   const nameOf = i => esc((V.names||[])[i] || 'Player ' + ((i||0)+1));
   let msg;
   if (V.phase === 'trickwon' && V.lastWin >= 0) {
-    msg = `<div class="banner"><b>🏆 ${nameOf(V.lastWin)} took trick ${V.trickNum}.</b></div>`;
+    msg = `<div class="banner"><b>🏆 ${nameOf(V.lastWin)} took trick ${V.trickNum}.</b> <span class="sm dim">5s review pause — peek at last tricks below.</span></div>`;
   } else if (myTurn) {
     msg = `<div class="banner"><b>Your turn</b> — play a highlighted card.</div>`;
   } else {
     msg = `<div class="banner dim">Waiting… <b>${nameOf(V.turn)}</b> to play.</div>`;
   }
-  const recap = (V.phase === 'play' && V.lastWin >= 0 && (V.trick||[]).length === 0)
-    ? `<div class="bidsheet center">Last trick: ${nameOf(V.lastWin)} took it.</div>` : '';
-  return `${clockTable()}${recap}${msg}
+  const canPeek = V.phase === 'trickwon';
+  const peekBtn = `<div class="center" style="margin:8px 0">
+    <button class="btn" ${canPeek?'':'disabled title="Only during the review pause between tricks"'} onclick="togglePeek()">${peekOpen?'✖ Close peek':'🔎 Peek last tricks'}</button>
+  </div>`;
+  const peek = (peekOpen && canPeek) ? `<div class="panel slim" style="margin-bottom:10px"><h3>Last tricks <span class="sm dim">(anonymous — cards only)</span></h3>${peekHTML()}</div>` : '';
+  return `${peek}${clockTable()}${peekBtn}${msg}
     <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
+}
+
+function peekHTML(){
+  const rows = (V.lastTricks || []).slice(-2).reverse();   // newest trick first
+  if (!rows.length) return '<div class="banner dim">No completed tricks yet.</div>';
+  return rows.map(r =>
+    `<div class="peekrow"><div class="sm dim">Trick ${r.n}</div><div class="peekcards">${(r.cards||[]).map(c => cardHTML(c, null, null)).join('')}</div></div>`).join('');
 }
 
 function summaryArea(){
@@ -360,7 +374,7 @@ function overHTML(){
   </div>`;
 }
 
-window.act = act; window.createTable = createTable; window.joinTable = joinTable; window.startGame = startGame; window.play = play;
+window.act = act; window.createTable = createTable; window.joinTable = joinTable; window.startGame = startGame; window.play = play; window.togglePeek = togglePeek;
 
 if (TOK && CODE) {
   // try to resume an existing session

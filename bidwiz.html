@@ -332,7 +332,7 @@ function resolveTrick(){
   logLine(`${G.names[w]} takes trick ${G.trickNum}.`);
   G.phase='trickwon';
   render();
-  if(G.fast){ nextAfterTrick(w); return; }
+  if(G.fast) return; // online server drives the 5s review pause itself
   setTimeout(()=>{ if(G.phase==='trickwon') nextAfterTrick(w); }, 1400);
 }
 function nextAfterTrick(w){
