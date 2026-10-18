@@ -112,7 +112,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v26'; // bump on every reupload — shown on screen
+const VERSION = 'v27'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -250,7 +250,8 @@ function tableHTML(){
   if (V.phase === 'over') return overHTML();
   const modeLabel = { partners:'2 vs 2', heads:'1 vs 1', cut:'CUT THROAT' }[V.mode] || V.mode;
   const showClock = ['bidding','blind','throwchoice','play','trickwon'].includes(V.phase);
-  const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · ${modeLabel}</span><span>${scorebar()}</span></div>
+  // partners: the scoreboard column carries the totals, so the banner stays clean
+  const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · ${modeLabel}</span>${V.mode==='partners' ? '' : `<span>${scorebar()}</span>`}</div>
     ${showClock ? clockTable() : seatRow()}` + phaseArea();
   if (V.mode === 'partners') {
     return `<div class="layout">
