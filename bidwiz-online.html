@@ -112,7 +112,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v25'; // bump on every reupload — shown on screen
+const VERSION = 'v26'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -295,10 +295,9 @@ function scoreTableHTML(){
     const p = done ? done.pts : null;
     if (p) { runUs += p[us]; runThem += p[them]; }
     const future = !done && !cur;
-    // completed + current rows carry the running total; future rows stay blank
-    const show = (done || cur);
-    const usPts = show ? String(runUs) : '';
-    const themPts = show ? String(runThem) : '';
+    // completed rows carry the running total; the hand in play shows bids ONLY (scores fill when it ends)
+    const usPts = done ? String(runUs) : '';
+    const themPts = done ? String(runThem) : '';
     body.push(`<tr><td>${sym(t, future)}</td><td>${usPts}</td>
      <td><div class="diag" ${future?'style="opacity:.35"':''}><span class="bl">${bidTxt(b[us], bl[us])}</span><span class="br">${bidTxt(b[them], bl[them])}</span></div></td>
      <td>${themPts}</td></tr>`);
