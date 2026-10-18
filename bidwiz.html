@@ -168,18 +168,19 @@ function startHand(){
   G.trump = TRUMP_CYCLE[(G.handNum-1)%5];
   G.dealerIdx = (G.firstDealer + G.handNum - 1) % G.n;
   G.bids = []; for(let i=0;i<G.n;i++) G.bids.push(null);
+  const prevThrown = G.throwin === true;   // remember BEFORE resetting per-hand flags
   G.blind=null; G.trick=[]; G.trickNum=0; G.tricksWon={}; G.lastWin=null; G.throwin=false;
   G.teamOpeners={}; G.formeTeam={};
   G.leadHistory={}; G.sluffHistory={};   // partnership memory: partner's leads & first sluffs
   const order=[]; for(let k=1;k<=G.n;k++) order.push((G.dealerIdx+k)%G.n);
   G.bidOrder=order; G.bidPos=0;
-  // blind eligibility: 100+ behind
+  // blind eligibility: 100+ behind — OR always after a thrown-in hand (owner rule)
   G.eligible = [];
   const sds = sides();
   const best = Math.max(...G.scores);
   for(const sd of sds){
     const sScore = Math.max(...sd.seats.map(i=>G.scores[i]));
-    if(best - sScore >= 100) G.eligible.push(sd.id);
+    if(prevThrown || best - sScore >= 100) G.eligible.push(sd.id);
   }
   G.blindQueue = G.eligible.slice();
   G.phase = G.blindQueue.length ? 'blind' : 'deal';
