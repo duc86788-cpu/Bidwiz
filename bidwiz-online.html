@@ -81,7 +81,11 @@
   .card.empty{ background:transparent; border:1px dashed var(--line); width:56px; height:80px; }
   .tablecenter{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; font-size:15px; pointer-events:none; }
   .peekrow{ margin:6px 0; }
-  .peekcards{ display:flex; gap:6px; flex-wrap:wrap; }
+  .peekcards{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .peek-ovl{ position:absolute; inset:0; background:rgba(7,22,14,.93); border-radius:16px; z-index:6;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:12px; cursor:pointer; }
+  .peek-ovl .peekcards .card{ width:54px; height:78px; font-size:20px; }
+  .peek-ovl .peekcards .card .s{ font-size:24px; }
   .bidchip{ display:inline-block; background:#234d36; border:1px solid var(--gold); border-radius:12px; padding:3px 10px; font-size:13.5px; font-weight:bold; }
   .bidchip.dim{ background:transparent; border-color:var(--line); color:var(--dim); font-weight:normal; }
   .dealer-tag{ display:inline-block; background:var(--gold); color:#1c1305; border-radius:7px; padding:1px 7px; font-size:10.5px; font-weight:bold; letter-spacing:1px; }
@@ -108,7 +112,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v21'; // bump on every reupload — shown on screen
+const VERSION = 'v25'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -382,8 +386,11 @@ function clockTable(){
       ? `<div class="tablecenter gold">🏆 ${nameOf(winner)} took trick ${V.trickNum}</div>`
       : '');
   // trick piles: face-down mini-cards, one per won trick, building stairs outside the table
+  const canReveal = (V.trick||[]).length === 0;
   const piles = (V.phase==='play' || V.phase==='trickwon') ? pilesHTML() : '';
-  return `<div class="tablewrap"><div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}</div>${piles}</div>`;
+  const ovl = (peekOpen && canReveal)
+    ? `<div class="peek-ovl" onclick="togglePeek()"><div class="sm dim" style="margin-bottom:6px">Last 2 tricks — anonymous · tap to close</div>${peekHTML()}</div>` : '';
+  return `<div class="tablewrap"><div class="table">${Object.keys(pos).map(i=>slot(+i)).join('')}${center}${ovl}</div>${piles}</div>`;
 }
 
 // stair-building pile of face-down mini-cards (one per trick taken).
@@ -427,8 +434,10 @@ function playArea(){
   }
   const canReveal = (V.trick||[]).length === 0;   // reveal available until a card is played
   if (peekOpen && !canReveal) peekOpen = false;   // auto-close once a card hits the table
-  const peek = (peekOpen && canReveal) ? `<div class="panel slim" style="margin-bottom:10px"><h3>Last 2 tricks <span class="sm dim">(anonymous — cards only, tap a pile to close)</span></h3>${peekHTML()}</div>` : '';
-  return `${peek}${msg}
+  // the reveal renders as an overlay on the table itself (see clockTable)
+  const claimBtn = V.canClaim
+    ? `<div class="center" style="margin:8px 0"><button class="btn gold" onclick="act('claim')">✋ Claim remaining tricks</button></div>` : '';
+  return `${msg}${claimBtn}
     <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, legalSet, myTurn?'play':'' )).join('')}</div>`;
 }
 

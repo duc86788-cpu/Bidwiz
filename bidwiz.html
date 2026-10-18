@@ -170,6 +170,7 @@ function startHand(){
   G.bids = []; for(let i=0;i<G.n;i++) G.bids.push(null);
   const prevThrown = G.throwin === true;   // remember BEFORE resetting per-hand flags
   G.blind=null; G.trick=[]; G.trickNum=0; G.tricksWon={}; G.lastWin=null; G.throwin=false;
+  G.played=[];
   G.teamOpeners={}; G.formeTeam={};
   G.leadHistory={}; G.sluffHistory={};   // partnership memory: partner's leads & first sluffs
   const order=[]; for(let k=1;k<=G.n;k++) order.push((G.dealerIdx+k)%G.n);
@@ -186,9 +187,9 @@ function startHand(){
   G.phase = G.blindQueue.length ? 'blind' : 'deal';
   render();
 }
-function chooseBlind(sideId, num){ // num 7|10 or 0 = skip
-  // if the deciding side is robotic, pick automatically
-  if(G.blindQueue.length && sides().find(x=>x.id===G.blindQueue[0]).seats.some(isRobot)){
+function chooseBlind(sideId, num, byHuman){ // num 7|10 or 0 = skip
+  // if the deciding side is fully robotic (and no human chose), pick automatically
+  if(!byHuman && G.blindQueue.length && sides().find(x=>x.id===G.blindQueue[0]).seats.some(isRobot)){
     sideId=G.blindQueue[0]; num=aiChooseBlind();
   }
   if(num>0){ G.blind={side:sideId,num}; G.blindQueue=[]; logLine(`${sideName(sideId)} declares Blind ${num}.`); }
@@ -314,6 +315,7 @@ function playCard(i, card){
   if(wasLead) G.leadHistory[i] = card.s;
   else if(card.s!==ledSuit && card.s!==G.trump && !G.sluffHistory[i]) G.sluffHistory[i] = card.s;
   h.splice(idx,1);
+  G.played = G.played || []; G.played.push({s:card.s, r:card.r});
   G.trick.push({seat:i, card});
   logLine(`${G.names[i]} plays ${rankChar(card.r)}${SUIT_CHAR[card.s]}.`);
   if(G.trick.length===G.n){ resolveTrick(); } else { G.turn=(G.turn+1)%G.n; render(); }
@@ -469,6 +471,8 @@ function aiPlay(i){
   // following
   const following=legal.filter(c=>c.s===led);
   if(following.length){
+    // third hand high: partner bot plays its highest of the led suit (owner rule)
+    if(G.teamMode && G.trick.length===G.n-2) return highest(following);
     const winners=following.filter(canWinNow);
     const partnerWinning = curWin!==null && curWinSide===mySide;
     if(partnerWinning){
@@ -498,6 +502,43 @@ function aiPlay(i){
     }
   }
   return lowest(legal); // discard
+}
+
+// ---------- claim: take all remaining tricks when the hand is decided ----------
+// Sound condition: claimer is on lead, holds ALL unplayed trumps (no ruffs against),
+// and their cards in every side suit are exactly the top cards remaining there —
+// leading each suit in descending order then wins every remaining trick.
+function canClaim(i){
+  if(G.phase!=='play' || !G.trick || G.trick.length!==0 || G.turn!==i) return false;
+  if(!G.hands || !G.hands[i] || !G.hands[i].length) return false;
+  const played = G.played || [];
+  const inPlayed = (s,r) => played.some(c=>c.s===s&&c.r===r);
+  const held = s => G.hands[i].filter(c=>c.s===s).sort((a,b)=>b.r-a.r);
+  // every unplayed trump must be in the claimer's hand
+  if(G.trump!=='NT'){
+    for(let r=2;r<=14;r++){ if(!inPlayed(G.trump,r) && !G.hands[i].some(c=>c.s===G.trump&&c.r===r)) return false; }
+  }
+  // in every side suit the claimer holds, their cards must be the top of what's left
+  for(const s of SUITS){
+    if(G.trump!=='NT' && s===G.trump) continue;
+    const mine = held(s);
+    if(!mine.length) continue;
+    // top of remaining: highest unplayed cards of this suit, in order
+    const remTop = [];
+    for(let r=14;r>=2 && remTop.length<mine.length;r--){ if(!inPlayed(s,r)) remTop.push(r); }
+    if(remTop.length<mine.length) return false;
+    for(let k=0;k<mine.length;k++){ if(mine[k].r!==remTop[k]) return false; }
+  }
+  return true;
+}
+function claimHand(i){
+  if(!canClaim(i)) return;
+  const rem = 13 - (G.trickNum||0);
+  const side = sideOfSeat(i);
+  G.tricksWon[side]=(G.tricksWon[side]||0)+rem;
+  logLine(`${G.names[i]} claims the remaining ${rem} trick${rem===1?'':'s'} — all boss cards in hand.`);
+  G.trick=[]; G.trickNum=13; G.turn=i;
+  scoreHand();
 }
 
 // ---------- rendering ----------
@@ -582,9 +623,9 @@ function blindHTML(){
     <p class="dim"><b>${sd.name}</b> is 100+ points behind and may declare a blind bid <b>before the deal</b>.</p>
     <p class="sm dim">Blind 7: make 7+ tricks = <b>+140</b>, fewer = <b>−70</b>. Blind 10: make 10+ = <b>+400</b>, fewer = <b>−100</b>. The blind bid replaces your normal bid.</p>
     <div class="panel"><b>${sd.name}</b><br>
-      <button class="btn" onclick="chooseBlind(${sd.id},7)">Blind 7</button>
-      <button class="btn" onclick="chooseBlind(${sd.id},10)">Blind 10</button>
-      <button class="btn small" onclick="chooseBlind(${sd.id},0)">Play normal</button></div>
+      <button class="btn" onclick="chooseBlind(${sd.id},7,true)">Blind 7</button>
+      <button class="btn" onclick="chooseBlind(${sd.id},10,true)">Blind 10</button>
+      <button class="btn small" onclick="chooseBlind(${sd.id},0,true)">Play normal</button></div>
   </div>`;
 }
 function bidHistoryHTML(){

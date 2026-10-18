@@ -27,7 +27,7 @@ function makeEngine() {
   return { Gref:()=>G, startGame, doDraw, confirmDraw, deal, submitBid, chooseBlind, playCard,
     legalCards, nextAfterTrick, nextHand, throwIn, playOut, sides, effectiveBidOfSide,
     bidOptions, bidderSeat, pushEligible, formeEligible2, partnerNotActed, TARGET,
-    aiBid, aiPlay, aiChooseBlind, sideOfSeat, sortHand, TRUMP_CYCLE };
+    aiBid, aiPlay, aiChooseBlind, sideOfSeat, sortHand, TRUMP_CYCLE, canClaim, claimHand };
   `;
   return new Function(engineBody + api)();
 }
@@ -170,6 +170,7 @@ function viewFor(room, seat) {
     bids: G.bids || [],                    // bids are public info
     bidOptions: myBid ? E.bidOptions(seat) : null,
     bidTurn: G.phase === 'bidding' ? E.bidderSeat() : -1,
+    canClaim: (G.phase === 'play' && (!G.trick || G.trick.length === 0) && G.turn === seat) ? !!E.canClaim(seat) : false,
     lastTricks: (room.trickLog || []).slice(-2),
     pushEligible: E.pushEligible(seat),
     formeEligible: E.formeEligible2(seat),
@@ -309,10 +310,15 @@ const server = http.createServer(async (req, res) => {
         E.playCard(i, card);
         return reply(true);
       }
+      if (b.type === 'claim' && G.phase==='play' && G.turn===i) {
+        if (!E.canClaim(i)) return json(res, 400, { error:'you cannot claim yet — opponents still hold winning cards' });
+        E.claimHand(i);
+        return reply(true);
+      }
       if (b.type === 'blind' && G.phase==='blind' && G.blindQueue.length) {
         const sd = E.sides().find(x => x.id === G.blindQueue[0]);
         if (!sd.seats.includes(i)) return json(res, 403, { error:'not your call' });
-        E.chooseBlind(G.blindQueue[0], [0,7,10].includes(+b.num) ? +b.num : 0);
+        E.chooseBlind(G.blindQueue[0], [0,7,10].includes(+b.num) ? +b.num : 0, true); // human's choice is final
         return reply(true);
       }
       if (b.type === 'throw' && G.phase==='throwchoice') {
