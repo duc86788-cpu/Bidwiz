@@ -540,6 +540,86 @@ function claimHand(i){
   scoreHand();
 }
 
+// ---------- heads draft deal (owner rules) ----------
+// 4 dealt each (dealer last) → discard 2 each → alternating double draws until the
+// deck is through: keep card 1 → the next drawn card must be discarded; discard
+// card 1 → the next drawn card must be kept. Both players end with 13 cards.
+function draftStart(){
+  const deck = newDeck();
+  const nd = (G.dealerIdx+1)%G.n;
+  G.hands = [[],[]];
+  for(let k=0;k<4;k++){ G.hands[nd].push(deck.pop()); G.hands[G.dealerIdx].push(deck.pop()); }
+  G.draft = { deck, whose: nd, card: null, discards: [0,0] };
+  G.phase = 'draftDiscard';
+  logLine(`— Draft deal: 4 cards each (dealer took the last) — discard 2, then draft the deck —`);
+  render();
+}
+function draftBotDiscard(who){
+  const h = G.hands[who];
+  const low = h.slice().sort((a,b)=>(a.s===G.trump?a.r-100:a.r)-(b.s===G.trump?b.r-100:b.r))[0];
+  draftDiscardCard(who, low);
+}
+function draftDiscardCard(i, card){
+  if(G.phase!=='draftDiscard') return;
+  if(G.draft.discards[i]>=2) return;
+  const h=G.hands[i];
+  const idx=h.findIndex(c=>c.s===card.s&&c.r===card.r);
+  if(idx<0) return;
+  h.splice(idx,1);
+  G.draft.discards[i]++;
+  logLine(`${G.names[i]} discards ${rankChar(card.r)}${SUIT_CHAR[card.s]} (${G.draft.discards[i]}/2).`);
+  if(G.draft.discards[0]>=2 && G.draft.discards[1]>=2){ G.phase='draftDraw'; }
+  render();
+}
+function draftReveal(){
+  G.draft.card = G.draft.deck.pop();
+  logLine(`${G.names[G.draft.whose]} draws ${rankChar(G.draft.card.r)}${SUIT_CHAR[G.draft.card.s]}.`);
+  render();
+}
+function draftBotChoice(){
+  const card = G.draft.card;
+  const keep = card.s===G.trump || card.r>=10;
+  draftChoice(G.draft.whose, keep);
+}
+function draftChoice(i, keep){
+  if(G.phase!=='draftDraw' || G.draft.whose!==i || !G.draft.card) return;
+  const card = G.draft.card; G.draft.card = null;
+  if(keep){
+    G.hands[i].push(card);
+    G.draft.deck.pop();   // the following card is drawn and discarded (forced)
+    logLine(`${G.names[i]} keeps ${rankChar(card.r)}${SUIT_CHAR[card.s]} and discards the next card.`);
+  } else {
+    logLine(`${G.names[i]} discards ${rankChar(card.r)}${SUIT_CHAR[card.s]} and keeps the next card.`);
+    const second = G.draft.deck.pop();
+    G.hands[i].push(second);
+  }
+  if(G.draft.deck.length===0){
+    logLine(`— Draft complete: both players hold 13 cards —`);
+    G.draft = null;
+    skipBidders();
+    G.phase = 'bidding';
+  } else {
+    G.draft.whose = (i+1)%G.n;
+  }
+  render();
+}
+function showDraftDiscardUI(){ $('app').innerHTML=draftDiscardHTML(); }
+function showDraftChoiceUI(){ $('app').innerHTML=draftChoiceHTML(); }
+function draftDiscardHTML(){
+  const i = [0,1].find(s=>G.draft.discards[s]<2);
+  const cards = G.hands[i].map(c=>`<div class="card legal" onclick="draftDiscard(${i},'${c.s}',${c.r})"><span>${rankChar(c.r)}</span><span class="s ${REDS.has(c.s)?'red-suit':''}">${SUIT_CHAR[c.s]}</span></div>`).join('');
+  return `<div class="panel"><h1 class="center">🂡 Draft deal</h1>
+    <div class="banner"><b>${G.names[i]}</b> — discard 2 of your 4 cards <span class="sm dim">(${G.draft.discards[i]}/2 done — tap a card)</span></div>
+    <div class="hand">${cards}</div></div>`;
+}
+function draftChoiceHTML(){
+  const i = G.draft.whose, c = G.draft.card;
+  return `<div class="panel"><h1 class="center">🂡 Draft draw</h1>
+    <div class="banner"><b>${G.names[i]}</b> drew ${rankChar(c.r)}${SUIT_CHAR[c.s]} — keep it, or discard it and keep the next?</div>
+    <div class="center"><button class="btn gold" onclick="draftChoice(${i},true)">Keep this card</button>
+    <button class="btn" onclick="draftChoice(${i},false)">Discard &amp; keep the next</button></div></div>`;
+}
+
 // ---------- rendering ----------
 let hideFor=null, pendingFn=null;
 function passTo(i, fn){ hideFor=i; pendingFn=fn; render(); }
@@ -557,6 +637,7 @@ function render(){
       app.innerHTML=blindHTML(); break;
     }
     case 'deal':
+      if(G.mode==='heads'){ draftStart(); return; }
       if(isRobot(G.bidOrder[0])){ deal(); return; }
       passTo(G.bidOrder[0], deal); return;
     case 'bidding': {
@@ -580,6 +661,17 @@ function render(){
         return;
       }
       passTo(G.turn, showPlayUI); return;
+    case 'draftDiscard': {
+      const owing=[0,1].find(s=>G.draft.discards[s]<2);
+      if(owing===undefined){ G.phase='draftDraw'; render(); return; }
+      if(isRobot(owing)){ draftBotDiscard(owing); return; }
+      passTo(owing, showDraftDiscardUI); return;
+    }
+    case 'draftDraw': {
+      if(!G.draft.card) draftReveal();
+      if(isRobot(G.draft.whose)){ draftBotChoice(); return; }
+      passTo(G.draft.whose, showDraftChoiceUI); return;
+    }
     case 'trickwon': app.innerHTML=playHTML(true); break;
     case 'summary': app.innerHTML=summaryHTML(); break;
     case 'over': app.innerHTML=overHTML(); break;

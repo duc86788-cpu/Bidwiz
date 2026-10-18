@@ -27,7 +27,8 @@ function makeEngine() {
   return { Gref:()=>G, startGame, doDraw, confirmDraw, deal, submitBid, chooseBlind, playCard,
     legalCards, nextAfterTrick, nextHand, throwIn, playOut, sides, effectiveBidOfSide,
     bidOptions, bidderSeat, pushEligible, formeEligible2, partnerNotActed, TARGET,
-    aiBid, aiPlay, aiChooseBlind, sideOfSeat, sortHand, TRUMP_CYCLE, canClaim, claimHand };
+    aiBid, aiPlay, aiChooseBlind, sideOfSeat, sortHand, TRUMP_CYCLE, canClaim, claimHand,
+    draftStart, draftDiscardCard, draftReveal, draftChoice };
   `;
   return new Function(engineBody + api)();
 }
@@ -51,8 +52,9 @@ function createRoom(hostName, mode, push) {
 function joinRoom(code, name) {
   const room = rooms.get(String(code||'').toUpperCase());
   if (!room) return null;
-  const i = room.seats.findIndex(s => !s); // first empty seat
-  if (i < 0) return null;
+  const cap = room.mode === 'heads' ? 2 : 4;   // 1v1 tables hold only two players
+  const i = room.seats.findIndex(s => !s);    // first empty seat
+  if (i < 0 || i >= cap) return null;
   const t = tok();
   room.seats[i] = { name: clean(name)||('P'+(i+1)), token: t, robot:false };
   return { room, token: t, seat: i };
@@ -72,7 +74,32 @@ function advanceRoom(room, forceResume) {
     if (G.phase === 'over' || G.phase === 'summary') return;
     if (G.phase === 'draw') { E.doDraw(); continue; }
     if (G.phase === 'drawShow') { E.confirmDraw(); continue; }
-    if (G.phase === 'deal') { E.deal(); continue; }
+    if (G.phase === 'deal') {
+      if (room.mode === 'heads') { E.draftStart(); continue; }
+      E.deal(); continue;
+    }
+    if (G.phase === 'draftDiscard') {
+      // bots owe discards → auto (drop their two weakest cards)
+      let acted = false;
+      for (let s = 0; s < 2; s++) {
+        if (G.draft.discards[s] < 2 && !isHuman(room, s)) {
+          const h = G.hands[s];
+          const low = h.slice().sort((a,b)=>(a.s===G.trump?a.r-100:a.r)-(b.s===G.trump?b.r-100:b.r))[0];
+          E.draftDiscardCard(s, low);
+          acted = true;
+        }
+      }
+      if (acted) continue;
+      // a human still owes discards → wait
+      if ([0,1].some(s => G.draft.discards[s] < 2 && isHuman(room, s))) return;
+      continue; // engine flipped to draftDraw
+    }
+    if (G.phase === 'draftDraw') {
+      if (!G.draft.card) E.draftReveal();
+      if (isHuman(room, G.draft.whose)) return;   // human sees the drawn card, must choose
+      const card = G.draft.card;
+      E.draftChoice(G.draft.whose, card.s === G.trump || card.r >= 10); continue;
+    }
     if (G.phase === 'blind') {
       const sd = E.sides().find(x => x.id === G.blindQueue[0]);
       if (sd.seats.some(s => isHuman(room, s))) return;
@@ -171,6 +198,7 @@ function viewFor(room, seat) {
     bidOptions: myBid ? E.bidOptions(seat) : null,
     bidTurn: G.phase === 'bidding' ? E.bidderSeat() : -1,
     canClaim: (G.phase === 'play' && (!G.trick || G.trick.length === 0) && G.turn === seat) ? !!E.canClaim(seat) : false,
+    draft: G.draft ? { whose: G.draft.whose, card: G.draft.card || null, discards: G.draft.discards.slice(), deckLeft: G.draft.deck ? G.draft.deck.length : 0 } : null,
     lastTricks: (room.trickLog || []).slice(-2),
     pushEligible: E.pushEligible(seat),
     formeEligible: E.formeEligible2(seat),
@@ -281,10 +309,11 @@ const server = http.createServer(async (req, res) => {
       if (i === 0) {
         if (room.started) return json(res, 400, { error:'already started' });
         room.started = true;
-        const names = room.seats.map((s,idx) => s ? s.name : ('Bot '+(idx+1)));
+        const need = room.mode === 'heads' ? 2 : 4;   // heads is a 2-player game: only 2 names
+        const names = room.seats.slice(0, need).map((s,idx) => s ? s.name : ('Bot '+(idx+1)));
         room.E.startGame(room.mode, names, room.push);
         const G = room.E.Gref();
-        G.robots = room.seats.map(s => !s);
+        G.robots = room.seats.slice(0, need).map(s => !s);
         G.fast = true;
         advanceRoom(room); broadcast(room);
         return json(res, 200, { ok: true });
@@ -315,6 +344,18 @@ const server = http.createServer(async (req, res) => {
         E.claimHand(i);
         return reply(true);
       }
+      if (b.type === 'draftDiscard' && G.phase==='draftDiscard') {
+        if (G.draft.discards[i]>=2) return json(res, 400, { error:'already discarded 2' });
+        const card = (G.hands[i]||[]).find(c => c.s===b.suit && c.r===parseInt(b.rank,10));
+        if (!card) return json(res, 400, { error:'no such card' });
+        E.draftDiscardCard(i, card);
+        return reply(true);
+      }
+      if (b.type === 'draftKeep' && G.phase==='draftDraw') {
+        if (G.draft.whose!==i || !G.draft.card) return json(res, 400, { error:'not your draw' });
+        E.draftChoice(i, !!b.keep);
+        return reply(true);
+      }
       if (b.type === 'blind' && G.phase==='blind' && G.blindQueue.length) {
         const sd = E.sides().find(x => x.id === G.blindQueue[0]);
         if (!sd.seats.includes(i)) return json(res, 403, { error:'not your call' });
@@ -341,7 +382,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 404, { error:'unknown session' });
   }
   res.writeHead(404); res.end('not found');
-  } catch (e) { console.error('request error:', e.message); try { json(res, 500, { error:'server error' }); } catch(_){} }
+  } catch (e) { console.error('request error:', e.stack || e.message); try { json(res, 500, { error:'server error' }); } catch(_){} }
 });
 
 server.listen(PORT, () => {

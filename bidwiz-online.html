@@ -112,7 +112,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v27'; // bump on every reupload — shown on screen
+const VERSION = 'v28'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -263,11 +263,42 @@ function tableHTML(){
 }
 
 function phaseArea(){
+  if (V.phase === 'draftDiscard' || V.phase === 'draftDraw') return draftArea();
   if (V.phase === 'bidding') return bidArea() + handRow();
   if (V.phase === 'blind') return blindArea() + handRow();
   if (V.phase === 'throwchoice') return throwArea() + handRow();
   if (V.phase === 'play' || V.phase === 'trickwon') return playArea();
   if (V.phase === 'summary') return summaryArea();
+  return '';
+}
+
+// heads draft deal: discard 2 of 4, then alternating double draws until the deck is through
+function draftArea(){
+  if (V.phase === 'draftDiscard'){
+    const d = V.draft || { discards:[0,0] };
+    const mine = V.yourSeat !== null && d.discards[V.yourSeat] < 2;
+    let inner;
+    if (mine){
+      inner = `<div class="banner"><b>Draft deal</b> — discard 2 of your 4 cards <span class="sm dim">(tap cards below — ${d.discards[V.yourSeat]}/2 done)</span></div>
+        <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, 'draftDiscard')).join('')}</div>`;
+    } else {
+      inner = `<div class="banner dim">⏳ Waiting… the other player is discarding.</div>
+        <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, null)).join('')}</div>`;
+    }
+    return inner;
+  }
+  if (V.phase === 'draftDraw'){
+    const d = V.draft;
+    if (!d) return '';
+    if (d.whose === V.yourSeat && d.card){
+      return `<div class="banner"><b>You drew</b> ${cardHTML(d.card, null, null)} — keep it, or discard it and keep the next?
+        <div class="center" style="margin-top:8px"><button class="btn gold" onclick="act('draftKeep',{keep:true})">Keep this card</button>
+        <button class="btn" onclick="act('draftKeep',{keep:false})">Discard &amp; keep the next</button></div></div>
+        <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, null)).join('')}</div>`;
+    }
+    return `<div class="banner dim">⏳ Draft in progress — ${esc((V.names||[])[d.whose]||'the other player')} is drawing <span class="sm">(${d.deckLeft} cards left in the deck)</span></div>
+      <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, null)).join('')}</div>`;
+  }
   return '';
 }
 
@@ -466,6 +497,7 @@ function overHTML(){
 }
 
 window.act = act; window.createTable = createTable; window.joinTable = joinTable; window.startGame = startGame; window.play = play; window.togglePeek = togglePeek;
+window.draftDiscard = (suit, rank) => act('draftDiscard', { suit, rank });
 
 if (TOK && CODE) {
   // try to resume an existing session
