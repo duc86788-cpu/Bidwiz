@@ -28,7 +28,7 @@ function makeEngine() {
     legalCards, nextAfterTrick, nextHand, throwIn, playOut, sides, effectiveBidOfSide,
     bidOptions, bidderSeat, pushEligible, formeEligible2, partnerNotActed, TARGET,
     aiBid, aiPlay, aiChooseBlind, sideOfSeat, sortHand, TRUMP_CYCLE, canClaim, claimHand,
-    draftStart, draftDiscardCard, draftReveal, draftChoice };
+    draftStart, draftDiscardCard, draftReveal, draftChoice, draftAck };
   `;
   return new Function(engineBody + api)();
 }
@@ -95,7 +95,11 @@ function advanceRoom(room, forceResume) {
       continue; // engine flipped to draftDraw
     }
     if (G.phase === 'draftDraw') {
-      if (!G.draft.card) E.draftReveal();
+      if (!G.draft.card && !G.draft.card2) E.draftReveal();
+      if (G.draft.card2) {                    // forced card is on show — awaiting the look
+        if (isHuman(room, G.draft.whose)) return;
+        E.draftAck(G.draft.whose); continue;
+      }
       if (isHuman(room, G.draft.whose)) return;   // human sees the drawn card, must choose
       const card = G.draft.card;
       E.draftChoice(G.draft.whose, card.s === G.trump || card.r >= 10); continue;
@@ -202,7 +206,7 @@ function viewFor(room, seat) {
     bidOptions: myBid ? E.bidOptions(seat) : null,
     bidTurn: G.phase === 'bidding' ? E.bidderSeat() : -1,
     canClaim: (G.phase === 'play' && (!G.trick || G.trick.length === 0) && G.turn === seat) ? !!E.canClaim(seat) : false,
-    draft: G.draft ? { whose: G.draft.whose, card: G.draft.card || null, discards: G.draft.discards.slice(), deckLeft: G.draft.deck ? G.draft.deck.length : 0 } : null,
+    draft: G.draft ? { whose: G.draft.whose, card: G.draft.card || null, card2: G.draft.card2 || null, discards: G.draft.discards.slice(), deckLeft: G.draft.deck ? G.draft.deck.length : 0 } : null,
     lastTricks: (room.trickLog || []).slice(-2),
     pushEligible: E.pushEligible(seat),
     formeEligible: E.formeEligible2(seat),
@@ -363,9 +367,14 @@ const server = http.createServer(async (req, res) => {
         E.draftDiscardCard(i, card);
         return reply(true);
       }
-      if (b.type === 'draftKeep' && G.phase==='draftDraw') {
-        if (G.draft.whose!==i || !G.draft.card) return json(res, 400, { error:'not your draw' });
+      if (b.type === 'draftKeep' && G.phase === 'draftDraw') {
+        if (G.draft.whose !== i || !G.draft.card) return json(res, 400, { error:'not your draw' });
         E.draftChoice(i, !!b.keep);
+        return reply(true);
+      }
+      if (b.type === 'draftAck' && G.phase === 'draftDraw') {
+        if (G.draft.whose !== i || !G.draft.card2) return json(res, 400, { error:'nothing to acknowledge' });
+        E.draftAck(i);
         return reply(true);
       }
       if (b.type === 'blind' && G.phase==='blind' && G.blindQueue.length) {

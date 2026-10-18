@@ -116,7 +116,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v29'; // bump on every reupload — shown on screen
+const VERSION = 'v30'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -294,14 +294,17 @@ function draftArea(){
   if (V.phase === 'draftDraw'){
     const d = V.draft;
     if (!d) return '';
+    const hand = `<div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, null)).join('')}</div>`;
+    if (d.whose === V.yourSeat && d.card2){
+      return `<div class="banner"><b>You kept</b> — you drew ${cardHTML(d.card2, null, null)} — look at it, then it is discarded.
+        <div class="center" style="margin-top:8px"><button class="btn gold" onclick="act('draftAck',{})">Discard it</button></div></div>${hand}`;
+    }
     if (d.whose === V.yourSeat && d.card){
       return `<div class="banner"><b>You drew</b> ${cardHTML(d.card, null, null)} — keep it, or discard it and keep the next?
         <div class="center" style="margin-top:8px"><button class="btn gold" onclick="act('draftKeep',{keep:true})">Keep this card</button>
-        <button class="btn" onclick="act('draftKeep',{keep:false})">Discard &amp; keep the next</button></div></div>
-        <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, null)).join('')}</div>`;
+        <button class="btn" onclick="act('draftKeep',{keep:false})">Discard &amp; keep the next</button></div></div>${hand}`;
     }
-    return `<div class="banner dim">⏳ Draft in progress — ${esc((V.names||[])[d.whose]||'the other player')} is drawing <span class="sm">(${d.deckLeft} cards left in the deck)</span></div>
-      <div class="hand">${(V.yourHand||[]).map(c => cardHTML(c, null, null)).join('')}</div>`;
+    return `<div class="banner dim">⏳ Draft in progress — ${esc((V.names||[])[d.whose]||'the other player')} is drawing <span class="sm">(${d.deckLeft} cards left in the deck)</span></div>${hand}`;
   }
   return '';
 }

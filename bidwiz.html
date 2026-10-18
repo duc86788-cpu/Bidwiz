@@ -577,6 +577,7 @@ function draftReveal(){
   render();
 }
 function draftBotChoice(){
+  if(G.draft.card2){ draftAck(G.draft.whose); return; }   // bot looks at the forced card, discards
   const card = G.draft.card;
   const keep = card.s===G.trump || card.r>=10;
   draftChoice(G.draft.whose, keep);
@@ -586,13 +587,23 @@ function draftChoice(i, keep){
   const card = G.draft.card; G.draft.card = null;
   if(keep){
     G.hands[i].push(card);
-    G.draft.deck.pop();   // the following card is drawn and discarded (forced)
-    logLine(`${G.names[i]} keeps ${rankChar(card.r)}${SUIT_CHAR[card.s]} and discards the next card.`);
-  } else {
-    logLine(`${G.names[i]} discards ${rankChar(card.r)}${SUIT_CHAR[card.s]} and keeps the next card.`);
-    const second = G.draft.deck.pop();
-    G.hands[i].push(second);
+    G.draft.card2 = G.draft.deck.pop();   // drawn and SHOWN to the player, then discarded
+    logLine(`${G.names[i]} keeps ${rankChar(card.r)}${SUIT_CHAR[card.s]} and draws the next card.`);
+    render();   // wait for the player to look at card2 and acknowledge
+    return;
   }
+  logLine(`${G.names[i]} discards ${rankChar(card.r)}${SUIT_CHAR[card.s]} and keeps the next card.`);
+  const second = G.draft.deck.pop();
+  G.hands[i].push(second);
+  draftFinishTurn(i);
+}
+function draftAck(i){   // player looked at the forced card — it is discarded
+  if(G.phase!=='draftDraw' || G.draft.whose!==i || !G.draft.card2) return;
+  const c2 = G.draft.card2; G.draft.card2 = null;
+  logLine(`${G.names[i]} discards ${rankChar(c2.r)}${SUIT_CHAR[c2.s]}.`);
+  draftFinishTurn(i);
+}
+function draftFinishTurn(i){
   if(G.draft.deck.length===0){
     logLine(`— Draft complete: both players hold 13 cards —`);
     G.draft = null;
@@ -614,6 +625,12 @@ function draftDiscardHTML(){
 }
 function draftChoiceHTML(){
   const i = G.draft.whose, c = G.draft.card;
+  if(G.draft.card2){
+    const c2 = G.draft.card2;
+    return `<div class="panel"><h1 class="center">🂡 Draft draw</h1>
+      <div class="banner"><b>${G.names[i]}</b> kept a card and drew ${rankChar(c2.r)}${SUIT_CHAR[c2.s]} — look at it, then it is discarded.</div>
+      <div class="center"><button class="btn gold" onclick="draftAck(${i})">Discard it</button></div></div>`;
+  }
   return `<div class="panel"><h1 class="center">🂡 Draft draw</h1>
     <div class="banner"><b>${G.names[i]}</b> drew ${rankChar(c.r)}${SUIT_CHAR[c.s]} — keep it, or discard it and keep the next?</div>
     <div class="center"><button class="btn gold" onclick="draftChoice(${i},true)">Keep this card</button>
@@ -668,7 +685,7 @@ function render(){
       passTo(owing, showDraftDiscardUI); return;
     }
     case 'draftDraw': {
-      if(!G.draft.card) draftReveal();
+      if(!G.draft.card && !G.draft.card2) draftReveal();
       if(isRobot(G.draft.whose)){ draftBotChoice(); return; }
       passTo(G.draft.whose, showDraftChoiceUI); return;
     }
