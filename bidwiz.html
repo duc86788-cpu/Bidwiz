@@ -484,15 +484,17 @@ function aiPlay(i){
   // void in led suit
   const trumps = trump!=='NT' ? bySuit(trump) : [];
   if(trumps.length){
-    const wouldWin=canWinNow(trumps[trumps.length-1]);
     const partnerWinning = curWin!==null && curWinSide===mySide;
     const blindRush = G.blind && G.blind.side===mySide;
     const sd0 = sides().find(x=>x.id===mySide);
     let eb=null; try { eb = sd0 ? effectiveBidOfSide(sd0) : null; } catch(e){}
-    const highBid = !!(eb && eb.num>=8);   // bid 8 or 10: ruff in whenever it wins
-    if(wouldWin && !partnerWinning && (G.trick.length===G.n-1 || blindRush || highBid)){
-      // ruff when it's the last seat, blind urgency, or a high team bid
-      return trumps[trumps.length-1]; // cheapest trump that wins
+    const highBid = !!(eb && eb.num>=8);
+    // never overtrump my partner: stay below partner's trump in this trick
+    const pTr = G.trick.filter(p=>p.card.s===trump && sideOfSeat(p.seat)===mySide);
+    const cap = pTr.length ? Math.max(...pTr.map(p=>p.card.r)) : 99;
+    const cands = trumps.slice().reverse().filter(t=>canWinNow(t) && t.r<cap); // cheapest first
+    if(cands.length && !partnerWinning && (G.trick.length===G.n-1 || blindRush || highBid)){
+      return cands[0]; // cheapest trump that wins without overtrumping partner
     }
   }
   return lowest(legal); // discard

@@ -108,7 +108,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v20'; // bump on every reupload — shown on screen
+const VERSION = 'v21'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -244,17 +244,17 @@ function trumpTxt(){ return V.trump==='NT' ? 'No Trump' : `<span class="${REDS.h
 
 function tableHTML(){
   if (V.phase === 'over') return overHTML();
+  const modeLabel = { partners:'2 vs 2', heads:'1 vs 1', cut:'CUT THROAT' }[V.mode] || V.mode;
   const showClock = ['bidding','blind','throwchoice','play','trickwon'].includes(V.phase);
-  const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · Hand <b>${V.handNum}</b> · Trump ${trumpTxt()} · ${V.mode}</span><span>${scorebar()}</span></div>
+  const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · ${modeLabel}</span><span>${scorebar()}</span></div>
     ${showClock ? clockTable() : seatRow()}` + phaseArea();
   if (V.mode === 'partners') {
     return `<div class="layout">
-      <div class="col left"><div class="panel slim"><h3>Hand log</h3>${logHTML()}<p class="sm dim center" style="margin-top:6px">BidWiz ${VERSION}</p></div></div>
       <div class="col main"><div class="panel">${board}</div></div>
-      <div class="col side"><div class="panel slim"><h3>Scoreboard</h3>${scoreTableHTML()}</div></div>
+      <div class="col side"><div class="panel slim"><h3>Scoreboard</h3>${scoreTableHTML()}<p class="sm dim center" style="margin-top:6px">BidWiz ${VERSION}</p></div></div>
     </div>`;
   }
-  return `<div class="panel">${board}<div class="log">${(V.log||[]).map(l=>esc(l)).join('<br>')}</div></div>`;
+  return `<div class="panel">${board}<p class="sm dim center" style="margin-top:6px">BidWiz ${VERSION}</p></div>`;
 }
 
 function phaseArea(){
