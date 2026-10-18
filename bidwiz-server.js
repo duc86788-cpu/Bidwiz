@@ -157,7 +157,11 @@ function recordHistory(room) {
       if (tb) { bids[t] = tb.num; blind[t] = !!tb.blind; }
     }
   } else {
-    G.summaryRows.forEach((r, i) => { bids[i] = r.bid; });
+    G.summaryRows.forEach((r, i) => {   // heads/cut: rows carry "5 (blind)" text → parse it
+      const m = /(\d+)/.exec(String(r.bid || ''));
+      if (m) bids[i] = +m[1];
+      blind[i] = /blind/i.test(String(r.bid || ''));
+    });
   }
   room.history.push({ hand: G.handNum, trump: G.trump, bids, blind, pts });
 }
@@ -206,9 +210,17 @@ function viewFor(room, seat) {
     pendingChoice: G.pendingChoice,
     handCounts: hands.map(h => h ? h.length : 0),
     history: room.history || [],
-    cur: (() => { const a = teamBid(room,0), b = teamBid(room,1);
-      return { hand: G.handNum || 0, trump: G.trump,
-        bids: [a ? a.num : null, b ? b.num : null], blind: [!!(a && a.blind), !!(b && b.blind)] }; })(),
+    cur: (() => {
+      if (G.mode === 'partners') { const a = teamBid(room,0), b = teamBid(room,1);
+        return { hand: G.handNum || 0, trump: G.trump,
+          bids: [a?a.num:null, b?b.num:null], blind: [!!(a&&a.blind), !!(b&&b.blind)] };
+      }
+      if (G.mode === 'heads' && G.bids) {   // heads: one bid per seat
+        return { hand: G.handNum || 0, trump: G.trump,
+          bids: [G.bids[0]?G.bids[0].num:null, G.bids[1]?G.bids[1].num:null], blind: [false,false] };
+      }
+      return null;
+    })(),
     summaryRows: G.phase==='summary' ? G.summaryRows : null,
     summaryThrown: G.summaryThrown,
     winner: G.winner || null,

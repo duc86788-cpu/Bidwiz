@@ -72,6 +72,10 @@
   .pile.tap:hover .minicard{ border-color:#ffd76a; }
   .pilebox{ position:relative; margin:0 auto; }
   .minicard{ position:absolute; width:22px; height:32px; background:#1a4530; border:1.5px solid var(--gold); border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,.45); }
+  .backs{ display:flex; margin:2px 0; }
+  .cback{ display:inline-block; width:17px; height:25px; margin-left:-9px; background:linear-gradient(135deg,#274b8f 40%,#1d3a6e 41%); border:1.5px solid #dfe7f5; border-radius:3px; box-shadow:0 1px 2px rgba(0,0,0,.5); }
+  .cback:first-child{ margin-left:0; }
+  .pslot .backs + .card, .pslot .backs + .card.empty{ margin-top:2px; }
   .pslot{ position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; max-width:44%; }
   .pslot.bottom{ bottom:10px; left:50%; transform:translateX(-50%); }
   .pslot.top{ top:10px; left:50%; transform:translateX(-50%); }
@@ -112,7 +116,7 @@ window.onerror = function(msg){
 <script>
 let V = null;          // last server view
 let peekOpen = false;  // last-tricks review panel
-const VERSION = 'v28'; // bump on every reupload — shown on screen
+const VERSION = 'v29'; // bump on every reupload — shown on screen
 // storage that survives private mode / in-app browsers (falls back to memory)
 const store = (() => {
   try { const t = '__bw_t'; localStorage.setItem(t, '1'); localStorage.removeItem(t); return localStorage; }
@@ -253,7 +257,7 @@ function tableHTML(){
   // partners: the scoreboard column carries the totals, so the banner stays clean
   const board = `<div class="scorebar"><span>Room <b class="gold">${V.code}</b> · ${modeLabel}</span>${V.mode==='partners' ? '' : `<span>${scorebar()}</span>`}</div>
     ${showClock ? clockTable() : seatRow()}` + phaseArea();
-  if (V.mode === 'partners') {
+  if (V.mode === 'partners' || V.mode === 'heads') {
     return `<div class="layout">
       <div class="col main"><div class="panel">${board}</div></div>
       <div class="col side"><div class="panel slim"><h3>Scoreboard</h3>${scoreTableHTML()}<p class="sm dim center" style="margin-top:6px">BidWiz ${VERSION}</p></div></div>
@@ -308,7 +312,11 @@ function logHTML(){
 
 // right-column scoreboard, scorepad style: pre-printed trump rows, RUNNING totals fill in
 function scoreTableHTML(){
-  const us = V.yourSeat % 2, them = 1 - us;   // partners: Team A = seats 0,2 → team 0
+  const heads = V.mode === 'heads';
+  const us = heads ? V.yourSeat : V.yourSeat % 2;
+  const them = heads ? (V.yourSeat + 1) % 2 : 1 - us;
+  const lblUs = heads ? 'Me' : 'Us';
+  const lblThem = heads ? 'You' : 'Them';
   const CYCLE = ['H','S','D','C','NT'];       // hand 1 ♥, 2 ♠, 3 ♦, 4 ♣, 5 NT, repeat
   const sym = (t, future) => t === 'NT' ? '<span class="dim">NT</span>'
     : `<span class="${REDS.has(t)?'red-suit':''}" ${future?'style="opacity:.45"':''}>${SUITC[t]||''}</span>`;
@@ -335,7 +343,7 @@ function scoreTableHTML(){
      <td>${themPts}</td></tr>`);
   }
   return `<table class="scoretable">
-    <tr><th>Trump</th><th>Us</th><th>Bids</th><th>Them</th></tr>${body.join('')}</table>`;
+    <tr><th>Trump</th><th>${lblUs}</th><th>Bids</th><th>${lblThem}</th></tr>${body.join('')}</table>`;
 }
 
 // your cards, face up, no clicking (used in bidding/blind/throw phases)
@@ -405,9 +413,14 @@ function clockTable(){
     const activeTurn = (V.phase==='play' || V.phase==='trickwon') ? V.turn===i : (V.phase==='bidding' && V.bidTurn===i);
     const card = played[i];
     const tricks = (V.tricksWon||{})[String(V.mode==='partners' ? i%2 : i)] || 0;
+    // face-down backs: everyone but me shows their remaining card count (live during play)
+    const n = (V.handCounts||[])[i] || 0;
+    const backs = (i!==V.yourSeat && (V.phase==='play'||V.phase==='trickwon') && n>0)
+      ? `<div class="backs">${'<i class="cback"></i>'.repeat(Math.min(n,9))}${n>9?`<b class="sm">+${n-9}</b>`:`<b class="sm dim">${n}</b>`}</div>` : '';
     return `<div class="pslot ${pos[i]}">
       <div class="plabel">${activeTurn?'<span class="turn-tag">●</span> ':''}<span class="dot ${dot}"></span>${nameOf(i)}${V.mode==='partners'?` <span class="sm">· ${tricks}</span>`:''}${i===V.dealer?' <span class="dealer-tag">DEALER</span>':''}</div>
-      ${biddingLike ? bidChip(i) : (card ? cardHTML(card, null, null) : '<div class="card empty"></div>')}
+      ${backs}
+      ${biddingLike ? bidChip(i) : (card ? cardHTML(card, null, null) : (backs ? '' : '<div class="card empty"></div>'))}
     </div>`;
   };
   const dealerName = nameOf(V.dealer);
